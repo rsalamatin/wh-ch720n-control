@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppTitle" xml:space="preserve"><value>Headphone Control</value></data>
+  <data name="Connect" xml:space="preserve"><value>Connect</value></data>
+  <data name="Disconnect" xml:space="preserve"><value>Disconnect</value></data>
+  <data name="Refresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Clear" xml:space="preserve"><value>Clear</value></data>
+  <data name="Unknown" xml:space="preserve"><value>Unknown</value></data>
+  <data name="UnknownValue" xml:space="preserve"><value>—</value></data>
+
+  <data name="ConnectionStatus_Disconnected" xml:space="preserve"><value>Disconnected</value></data>
+  <data name="ConnectionStatus_Connecting" xml:space="preserve"><value>Connecting…</value></data>
+  <data name="ConnectionStatus_Connected" xml:space="preserve"><value>Connected</value></data>
+  <data name="ConnectionStatus_Failed" xml:space="preserve"><value>Connection failed</value></data>
+
+  <data name="Label_Battery" xml:space="preserve"><value>Battery</value></data>
+  <data name="Label_Firmware" xml:space="preserve"><value>Firmware</value></data>
+  <data name="Label_Codec" xml:space="preserve"><value>Codec</value></data>
+  <data name="Label_Charging" xml:space="preserve"><value>Charging</value></data>
+  <data name="BatteryLevelFormat" xml:space="preserve"><value>{0} %</value></data>
+
+  <data name="Section_NoiseControl" xml:space="preserve"><value>Noise control</value></data>
+  <data name="Section_Equalizer" xml:space="preserve"><value>Equalizer</value></data>
+  <data name="Section_Sound" xml:space="preserve"><value>Sound quality</value></data>
+  <data name="Section_Diagnostics" xml:space="preserve"><value>Diagnostics</value></data>
+
+  <data name="Label_FocusOnVoice" xml:space="preserve"><value>Focus on voice</value></data>
+  <data name="Label_AmbientLevel" xml:space="preserve"><value>Ambient level</value></data>
+  <data name="Label_Preset" xml:space="preserve"><value>Preset</value></data>
+  <data name="Label_Dsee" xml:space="preserve"><value>DSEE (upscaling)</value></data>
+
+  <data name="NoiseMode_Off" xml:space="preserve"><value>Off</value></data>
+  <data name="NoiseMode_NoiseCancelling" xml:space="preserve"><value>Noise cancelling</value></data>
+  <data name="NoiseMode_Ambient" xml:space="preserve"><value>Ambient sound</value></data>
+
+  <data name="EqPreset_Off" xml:space="preserve"><value>Off</value></data>
+  <data name="EqPreset_Bright" xml:space="preserve"><value>Bright</value></data>
+  <data name="EqPreset_Excited" xml:space="preserve"><value>Excited</value></data>
+  <data name="EqPreset_Mellow" xml:space="preserve"><value>Mellow</value></data>
+  <data name="EqPreset_Relaxed" xml:space="preserve"><value>Relaxed</value></data>
+  <data name="EqPreset_Vocal" xml:space="preserve"><value>Vocal</value></data>
+  <data name="EqPreset_TrebleBoost" xml:space="preserve"><value>Treble boost</value></data>
+  <data name="EqPreset_BassBoost" xml:space="preserve"><value>Bass boost</value></data>
+  <data name="EqPreset_Speech" xml:space="preserve"><value>Speech</value></data>
+  <data name="EqPreset_Manual" xml:space="preserve"><value>Custom</value></data>
+
+  <data name="EqBand_ClearBass" xml:space="preserve"><value>Clear Bass</value></data>
+  <data name="EqBand_400Hz" xml:space="preserve"><value>400</value></data>
+  <data name="EqBand_1kHz" xml:space="preserve"><value>1k</value></data>
+  <data name="EqBand_2500Hz" xml:space="preserve"><value>2.5k</value></data>
+  <data name="EqBand_6300Hz" xml:space="preserve"><value>6.3k</value></data>
+  <data name="EqBand_16kHz" xml:space="preserve"><value>16k</value></data>
+
+  <data name="Codec_Unknown" xml:space="preserve"><value>Unknown</value></data>
+  <data name="Codec_Sbc" xml:space="preserve"><value>SBC</value></data>
+  <data name="Codec_Aac" xml:space="preserve"><value>AAC</value></data>
+  <data name="Codec_Ldac" xml:space="preserve"><value>LDAC</value></data>
+  <data name="Codec_AptX" xml:space="preserve"><value>aptX</value></data>
+  <data name="Codec_AptXHd" xml:space="preserve"><value>aptX HD</value></data>
+  <data name="Codec_Lc3" xml:space="preserve"><value>LC3</value></data>
+
+  <data name="Status_Ready" xml:space="preserve"><value>Ready.</value></data>
+  <data name="Status_ConnectedFormat" xml:space="preserve"><value>Connected to {0}.</value></data>
+  <data name="Status_Disconnected" xml:space="preserve"><value>Disconnected.</value></data>
+  <data name="Status_Refreshed" xml:space="preserve"><value>Settings refreshed.</value></data>
+  <data name="Status_Applied" xml:space="preserve"><value>Setting applied.</value></data>
+  <data name="Status_EqualizerUnknown" xml:space="preserve"><value>Preset applied, but the equalizer could not be read back. Press Refresh.</value></data>
+  <data name="Status_Cancelled" xml:space="preserve"><value>Operation cancelled.</value></data>
+  <data name="Status_FailedFormat" xml:space="preserve"><value>{0} failed: {1}</value></data>
+  <data name="Status_NotSupportedFormat" xml:space="preserve"><value>{0} refused: the headset is not a confirmed WH-CH720N (V2 protocol), so nothing was sent.</value></data>
+
+  <data name="Operation_Connect" xml:space="preserve"><value>Connect</value></data>
+  <data name="Operation_Disconnect" xml:space="preserve"><value>Disconnect</value></data>
+  <data name="Operation_Refresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Operation_NoiseControl" xml:space="preserve"><value>Changing noise control</value></data>
+  <data name="Operation_EqualizerPreset" xml:space="preserve"><value>Changing equalizer preset</value></data>
+  <data name="Operation_CustomEqualizer" xml:space="preserve"><value>Changing custom equalizer</value></data>
+  <data name="Operation_Dsee" xml:space="preserve"><value>Changing DSEE</value></data>
+
+  <data name="Error_NotConnected" xml:space="preserve"><value>The headset is not connected.</value></data>
+  <data name="Error_SimulatedConnectFailure" xml:space="preserve"><value>Simulated connection failure: the headset did not answer.</value></data>
+  <data name="Error_AmbientLevelRange" xml:space="preserve"><value>Ambient level must be between 0 and 20.</value></data>
+  <data name="Error_EqualizerLevelRange" xml:space="preserve"><value>Equalizer levels must be between -10 and 10.</value></data>
+  <data name="Error_EqualizerBandCount" xml:space="preserve"><value>Exactly 5 equalizer bands are required.</value></data>
+  <data name="Error_UndefinedValue" xml:space="preserve"><value>The value is not supported by the headset.</value></data>
+</root>

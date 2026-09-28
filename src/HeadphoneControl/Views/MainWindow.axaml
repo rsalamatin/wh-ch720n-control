@@ -1,0 +1,163 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:HeadphoneControl.ViewModels"
+        xmlns:res="using:HeadphoneControl.Resources"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="900"
+        x:Class="HeadphoneControl.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Width="760" Height="900" MinWidth="560" MinHeight="480"
+        Title="{x:Static res:Strings.AppTitle}">
+
+    <Window.Styles>
+        <Style Selector="Border.card">
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
+        <Style Selector="TextBlock.heading">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style Selector="TextBlock.caption">
+            <Setter Property="Opacity" Value="0.7" />
+        </Style>
+        <!-- Fluent has no disabled look for plain TextBlocks, so dim a disabled setting row's labels. -->
+        <Style Selector="Grid.setting:disabled > TextBlock">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
+    </Window.Styles>
+
+    <Window.Resources>
+        <DataTemplate x:Key="BandTemplate" x:DataType="vm:EqualizerBandViewModel">
+            <StackPanel Spacing="4" Width="56">
+                <TextBlock Text="{Binding Value}" HorizontalAlignment="Center" />
+                <Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center"
+                        Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                        TickFrequency="1" IsSnapToTickEnabled="True"
+                        Value="{Binding Value}" />
+                <TextBlock Text="{Binding Label}" HorizontalAlignment="Center" Classes="caption" TextWrapping="Wrap" TextAlignment="Center" />
+            </StackPanel>
+        </DataTemplate>
+    </Window.Resources>
+
+    <DockPanel Margin="16">
+
+        <Border DockPanel.Dock="Top" Classes="card" Margin="0,0,0,12">
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2">
+                    <TextBlock Text="{Binding DeviceName}" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock x:Name="ConnectionStatusText" Text="{Binding ConnectionText}" Classes="caption" />
+                </StackPanel>
+                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button x:Name="ConnectButton" Content="{x:Static res:Strings.Connect}" Command="{Binding ConnectCommand}" />
+                    <Button x:Name="DisconnectButton" Content="{x:Static res:Strings.Disconnect}" Command="{Binding DisconnectCommand}" />
+                    <Button x:Name="RefreshButton" Content="{x:Static res:Strings.Refresh}" Command="{Binding RefreshCommand}" />
+                    <Button x:Name="CancelButton" Content="{x:Static res:Strings.Cancel}" Command="{Binding CancelCommand}" />
+                </StackPanel>
+
+                <WrapPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,24,0">
+                        <TextBlock Text="{x:Static res:Strings.Label_Battery}" Classes="caption" />
+                        <TextBlock x:Name="BatteryText" Text="{Binding BatteryText}" FontWeight="SemiBold" />
+                        <TextBlock Text="{x:Static res:Strings.Label_Charging}" IsVisible="{Binding IsCharging}" Foreground="ForestGreen" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,24,0">
+                        <TextBlock Text="{x:Static res:Strings.Label_Codec}" Classes="caption" />
+                        <TextBlock Text="{Binding CodecText}" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="{x:Static res:Strings.Label_Firmware}" Classes="caption" />
+                        <TextBlock Text="{Binding FirmwareText}" FontWeight="SemiBold" />
+                    </StackPanel>
+                </WrapPanel>
+
+                <ProgressBar Grid.Row="2" Grid.ColumnSpan="2" Margin="0,10,0,0"
+                             IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
+            </Grid>
+        </Border>
+
+        <SelectableTextBlock x:Name="StatusLine" DockPanel.Dock="Bottom" Margin="2,10,2,0"
+                             Text="{Binding StatusMessage}" TextWrapping="Wrap" />
+
+        <ScrollViewer>
+            <StackPanel Spacing="12">
+
+                <Border Classes="card">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="{x:Static res:Strings.Section_NoiseControl}" Classes="heading" />
+                        <ListBox x:Name="NoiseModeList"
+                                 ItemsSource="{Binding NoiseModes}"
+                                 SelectedItem="{Binding SelectedNoiseMode}"
+                                 IsEnabled="{Binding CanEditNoiseControl}">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="4" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                        </ListBox>
+                        <!-- Always visible like DSEE; the headset only applies these settings in Ambient mode. -->
+                        <Grid Classes="setting" ColumnDefinitions="Auto,*,Auto" IsEnabled="{Binding CanEditAmbient}">
+                            <TextBlock Grid.Column="0" Text="{x:Static res:Strings.Label_AmbientLevel}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <Slider x:Name="AmbientLevelSlider" Grid.Column="1"
+                                    Minimum="1" Maximum="20" TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding AmbientLevel}" />
+                            <TextBlock Grid.Column="2" Text="{Binding AmbientLevel}" MinWidth="24" TextAlignment="Right" VerticalAlignment="Center" />
+                        </Grid>
+                        <ToggleSwitch x:Name="FocusOnVoiceToggle" Content="{x:Static res:Strings.Label_FocusOnVoice}"
+                                      IsChecked="{Binding FocusOnVoice}" IsEnabled="{Binding CanEditAmbient}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="card">
+                    <StackPanel Spacing="10" IsEnabled="{Binding CanEditEqualizer}">
+                        <TextBlock Text="{x:Static res:Strings.Section_Equalizer}" Classes="heading" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <TextBlock Text="{x:Static res:Strings.Label_Preset}" VerticalAlignment="Center" />
+                            <ComboBox x:Name="PresetCombo" MinWidth="200"
+                                      ItemsSource="{Binding Presets}"
+                                      SelectedItem="{Binding SelectedPreset}"
+                                      PlaceholderText="{x:Static res:Strings.Unknown}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="18">
+                            <ContentControl Content="{Binding ClearBass}" ContentTemplate="{StaticResource BandTemplate}" />
+                            <Rectangle Width="1" Fill="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+                            <ItemsControl ItemsSource="{Binding Bands}" ItemTemplate="{StaticResource BandTemplate}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="18" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="card">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{x:Static res:Strings.Section_Sound}" Classes="heading" />
+                        <ToggleSwitch x:Name="DseeToggle" Content="{x:Static res:Strings.Label_Dsee}"
+                                      IsChecked="{Binding IsDseeEnabled}" IsEnabled="{Binding CanEditDsee}" />
+                    </StackPanel>
+                </Border>
+
+                <Expander x:Name="DiagnosticsExpander" Header="{x:Static res:Strings.Section_Diagnostics}"
+                          HorizontalAlignment="Stretch">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Top" HorizontalAlignment="Right" Margin="0,0,0,6"
+                                Content="{x:Static res:Strings.Clear}" Command="{Binding Diagnostics.ClearCommand}" />
+                        <TextBox x:Name="DiagnosticsText" Height="240" IsReadOnly="True"
+                                 AcceptsReturn="True" TextWrapping="NoWrap"
+                                 FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
+                                 Text="{Binding Diagnostics.Text, Mode=OneWay}" />
+                    </DockPanel>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+
+</Window>

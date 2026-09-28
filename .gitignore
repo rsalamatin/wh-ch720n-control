@@ -1,0 +1,41 @@
+# Build output (UseArtifactsOutput puts everything here, including per-agent lanes)
+artifacts/
+[Bb]in/
+[Oo]bj/
+
+# Test results and coverage
+TestResults/
+*.trx
+coverage*.xml
+*.coverage
+
+# App diagnostics log (may contain device data; written beside the executable)
+headphone-control.log
+
+# IDEs
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.user
+*.suo
+*.userprefs
+*.DotSettings.user
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/packages/
+
+# Publish output
+publish/
+*.pubxml.user
+
+# Claude Code: settings hold personal paths and a GitHub token, so they stay local; skills and agents are committed
+.claude/settings.json
+.claude/settings.local.json
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <!-- Parallel development: pass -p:Lane=<name> so concurrent builds use separate output folders. -->
+    <ArtifactsPath Condition="'$(Lane)' != ''">$(MSBuildThisFileDirectory)artifacts\lanes\$(Lane)</ArtifactsPath>
+  </PropertyGroup>
+</Project>
