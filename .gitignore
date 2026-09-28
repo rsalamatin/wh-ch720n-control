@@ -31,9 +31,8 @@ headphone-control.log
 publish/
 *.pubxml.user
 
-# Claude Code: settings hold personal paths and a GitHub token, so they stay local; skills and agents are committed
-.claude/settings.json
-.claude/settings.local.json
+# Claude Code: local only for now (settings.json holds a GitHub token)
+.claude/
 
 # OS
 Thumbs.db
