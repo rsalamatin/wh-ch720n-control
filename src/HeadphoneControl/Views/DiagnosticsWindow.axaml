@@ -1,0 +1,29 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:HeadphoneControl.ViewModels"
+        xmlns:res="using:HeadphoneControl.Resources"
+        x:Class="HeadphoneControl.Views.DiagnosticsWindow"
+        x:DataType="vm:DiagnosticsViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Width="720" Height="460" MinWidth="420" MinHeight="240"
+        WindowStartupLocation="CenterOwner"
+        Title="{x:Static res:Strings.DiagnosticsTitle}">
+
+    <DockPanel Margin="14,10,14,14">
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,Auto,*" Margin="0,0,0,10">
+            <Button Grid.Column="0" Content="{x:Static res:Strings.CopyAll}" Click="OnCopyAllClick" Margin="0,0,8,0" />
+            <Button Grid.Column="1" Content="{x:Static res:Strings.Clear}" Command="{Binding ClearCommand}" Margin="0,0,8,0" />
+            <Button Grid.Column="2" Content="{x:Static res:Strings.OpenLogFolder}" Click="OnOpenLogFolderClick" />
+            <TextBlock Grid.Column="3" x:Name="Hint" Text="{x:Static res:Strings.DiagnosticsHint}" Classes="muted" FontSize="12"
+                       HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="12,0,0,0" />
+            <TextBlock Grid.Column="3" x:Name="ActionError" IsVisible="False" FontSize="12"
+                       Foreground="{DynamicResource AlertTextBrush}"
+                       HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="12,0,0,0" />
+        </Grid>
+        <TextBox x:Name="DiagnosticsText" IsReadOnly="True"
+                 AcceptsReturn="True" TextWrapping="NoWrap"
+                 FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
+                 Background="{DynamicResource CardBackgroundBrush}"
+                 Text="{Binding Text, Mode=OneWay}" />
+    </DockPanel>
+</Window>

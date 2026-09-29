@@ -18,6 +18,8 @@ These ideas come from the original design plan (`plan.md`, deleted on 2026-09-28
   - A manual Disconnect stops the retries.
   - A plain timeout does not count as link loss.
 - **Self-contained publish.** `dotnet publish -r win-x64 --self-contained` produces a portable folder. No installer.
+- **App icon.** The windows still use the Avalonia logo; replace it with a headphone icon (`.ico`).
+- **Remember collapsed sections** along with the other persisted settings.
 - **Log file size cap.** Cap `headphone-control.log` at about 5 MB and roll it over to `.1`.
 
 ## Safety hardening

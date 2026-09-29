@@ -715,6 +715,279 @@ public class MainViewModelTests
     }
 
     [Test]
+    public async Task WhenDeviceFailsThenAlertIsVisible()
+    {
+        var device = CreateDevice(ConnectedState());
+        device.RefreshAsync(Arg.Any<CancellationToken>()).ThrowsAsync(new TimeoutException("no ACK"));
+        using var viewModel = CreateViewModel(device);
+
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        await Assert.That(viewModel.IsAlertVisible).IsTrue();
+    }
+
+    [Test]
+    public async Task WhenOperationSucceedsAfterFailureThenAlertIsHidden()
+    {
+        var device = CreateDevice(ConnectedState());
+        device.RefreshAsync(Arg.Any<CancellationToken>()).ThrowsAsync(new TimeoutException("no ACK"));
+        using var viewModel = CreateViewModel(device);
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        viewModel.IsDseeEnabled = true;
+        await viewModel.ApplyDseeCommand.ExecutionTask!;
+
+        await Assert.That(viewModel.IsAlertVisible).IsFalse();
+    }
+
+    [Test]
+    public async Task WhenAlertIsDismissedThenAlertIsHidden()
+    {
+        var device = CreateDevice(ConnectedState());
+        device.RefreshAsync(Arg.Any<CancellationToken>()).ThrowsAsync(new TimeoutException("no ACK"));
+        using var viewModel = CreateViewModel(device);
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        viewModel.DismissAlertCommand.Execute(null);
+
+        await Assert.That(viewModel.IsAlertVisible).IsFalse();
+    }
+
+    [Test]
+    public async Task WhenSettingIsAppliedThenNoAlertIsShown()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+
+        viewModel.IsDseeEnabled = true;
+        await viewModel.ApplyDseeCommand.ExecutionTask!;
+
+        await Assert.That(viewModel.IsAlertVisible).IsFalse();
+    }
+
+    [Test]
+    public async Task WhenPresetIsAppliedButEqualizerCannotBeReadBackThenStatusIsWarning()
+    {
+        var device = CreateDevice(ConnectedState());
+        device.SetEqualizerPresetAsync(Arg.Any<EqualizerPreset>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                device.State.Returns(ConnectedState() with { Equalizer = null });
+                return Task.CompletedTask;
+            });
+        using var viewModel = CreateViewModel(device);
+
+        viewModel.SelectedPreset = viewModel.Presets.Single(p => p.Value == EqualizerPreset.BassBoost);
+        await viewModel.ApplyEqualizerPresetCommand.ExecutionTask!;
+
+        await Assert.That(viewModel.StatusSeverity).IsEqualTo(StatusSeverity.Warning);
+    }
+
+    [Test]
+    [Arguments(20, true)]
+    [Arguments(21, false)]
+    public async Task WhenBatteryLevelIsKnownThenLowBatteryStartsAtTwentyPercent(int level, bool expectedLow)
+    {
+        var device = CreateDevice(ConnectedState() with { Battery = new BatteryState(level, IsCharging: false) });
+
+        using var viewModel = CreateViewModel(device);
+
+        await Assert.That(viewModel.IsBatteryLow).IsEqualTo(expectedLow);
+    }
+
+    [Test]
+    public async Task WhenConnectedWithKnownCodecThenConnectionSummaryShowsCodec()
+    {
+        var device = CreateDevice(ConnectedState());
+
+        using var viewModel = CreateViewModel(device);
+
+        await Assert.That(viewModel.ConnectionSummary).IsEqualTo(Strings.Format("ConnectionWithCodecFormat", Strings.Get("ConnectionStatus_Connected"), "LDAC"));
+    }
+
+    [Test]
+    public async Task WhenConnectIsRunningThenViewModelIsConnecting()
+    {
+        var device = CreateDevice(DeviceState.Disconnected);
+        var pending = new TaskCompletionSource();
+        device.ConnectAsync(Arg.Any<CancellationToken>()).Returns(pending.Task);
+        using var viewModel = CreateViewModel(device);
+
+        var connecting = viewModel.ConnectCommand.ExecuteAsync(null);
+
+        try
+        {
+            await Assert.That(viewModel.IsConnecting).IsTrue();
+        }
+        finally
+        {
+            pending.SetResult();
+            await connecting;
+        }
+    }
+
+    [Test]
+    public async Task WhenDisconnectIsRunningAndDeviceReportsDisconnectedThenViewModelIsNotConnecting()
+    {
+        var device = CreateDevice(ConnectedState());
+        var pending = new TaskCompletionSource();
+        device.DisconnectAsync(Arg.Any<CancellationToken>()).Returns(pending.Task);
+        using var viewModel = CreateViewModel(device);
+        var disconnecting = viewModel.DisconnectCommand.ExecuteAsync(null);
+        device.State.Returns(DeviceState.Disconnected);
+
+        device.StateChanged += Raise.Event<EventHandler<DeviceState>>(device, DeviceState.Disconnected);
+
+        try
+        {
+            await Assert.That(viewModel.IsConnecting).IsFalse();
+        }
+        finally
+        {
+            pending.SetResult();
+            await disconnecting;
+        }
+    }
+
+    [Test]
+    public async Task WhenConnectIsRunningThenEmptyStateTitleShowsConnecting()
+    {
+        var device = CreateDevice(DeviceState.Disconnected);
+        var pending = new TaskCompletionSource();
+        device.ConnectAsync(Arg.Any<CancellationToken>()).Returns(pending.Task);
+        using var viewModel = CreateViewModel(device);
+
+        var connecting = viewModel.ConnectCommand.ExecuteAsync(null);
+
+        try
+        {
+            await Assert.That(viewModel.EmptyStateTitle).IsEqualTo(Strings.Get("ConnectionStatus_Connecting"));
+        }
+        finally
+        {
+            pending.SetResult();
+            await connecting;
+        }
+    }
+
+    [Test]
+    public async Task WhenAmbientLevelChangesThenNoiseSummaryChangeIsRaised()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+        var raised = new List<string?>();
+        viewModel.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        viewModel.AmbientLevel = 12;
+
+        await Assert.That(raised).Contains(nameof(MainViewModel.NoiseSummary));
+    }
+
+    [Test]
+    public async Task WhenEqualizerIsUnknownThenSoundSummaryShowsPlaceholderPreset()
+    {
+        var device = CreateDevice(ConnectedState() with { Equalizer = null });
+
+        using var viewModel = CreateViewModel(device);
+
+        await Assert.That(viewModel.SoundSummary).IsEqualTo(Strings.Format("Summary_SoundFormat", Strings.UnknownValue, Strings.Get("Off")));
+    }
+
+    [Test]
+    public async Task WhenNoiseModeSelectionIsClearedThenDeviceModeIsShownAgain()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+
+        viewModel.SelectedNoiseMode = null;
+
+        await Assert.That(viewModel.SelectedNoiseMode?.Value).IsEqualTo(NoiseControlMode.Ambient);
+    }
+
+    [Test]
+    public async Task WhenNoiseModeSelectionIsClearedThenNothingIsSent()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+
+        viewModel.SelectedNoiseMode = null;
+
+        await device.DidNotReceive().SetNoiseControlAsync(Arg.Any<NoiseControlState>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task WhenEqualizerIsUnknownThenResetCannotExecute()
+    {
+        var device = CreateDevice(ConnectedState() with { Equalizer = null });
+
+        using var viewModel = CreateViewModel(device);
+
+        await Assert.That(viewModel.ResetEqualizerCommand.CanExecute(null)).IsFalse();
+    }
+
+    [Test]
+    public async Task WhenConnectionFailedThenConnectButtonOffersRetry()
+    {
+        var device = CreateDevice(DeviceState.Disconnected with { Connection = ConnectionStatus.Failed });
+
+        using var viewModel = CreateViewModel(device);
+
+        await Assert.That(viewModel.ConnectButtonText).IsEqualTo(Strings.Get("TryAgain"));
+    }
+
+    [Test]
+    public async Task WhenCreatedThenNoiseCancellingIsTheFirstNoiseMode()
+    {
+        var device = CreateDevice(DeviceState.Disconnected);
+
+        using var viewModel = CreateViewModel(device);
+
+        await Assert.That(viewModel.NoiseModes[0].Value).IsEqualTo(NoiseControlMode.NoiseCancelling);
+    }
+
+    [Test]
+    public async Task WhenInAmbientModeThenNoiseSummaryIncludesAmbientLevel()
+    {
+        var device = CreateDevice(ConnectedState());
+
+        using var viewModel = CreateViewModel(device);
+
+        await Assert.That(viewModel.NoiseSummary).IsEqualTo(Strings.Format("Summary_AmbientFormat", Strings.Get("NoiseMode_Ambient"), 7));
+    }
+
+    [Test]
+    public async Task WhenNotInAmbientModeThenNoiseSummaryIsModeName()
+    {
+        var noiseCancelling = new NoiseControlState(NoiseControlMode.NoiseCancelling, FocusOnVoice: false, AmbientLevel: 1);
+        var device = CreateDevice(ConnectedState() with { NoiseControl = noiseCancelling });
+
+        using var viewModel = CreateViewModel(device);
+
+        await Assert.That(viewModel.NoiseSummary).IsEqualTo(Strings.Get("NoiseMode_NoiseCancelling"));
+    }
+
+    [Test]
+    public async Task WhenDseeIsOnThenSoundSummarySaysOn()
+    {
+        var device = CreateDevice(ConnectedState() with { DseeEnabled = true });
+
+        using var viewModel = CreateViewModel(device);
+
+        await Assert.That(viewModel.SoundSummary).IsEqualTo(Strings.Format("Summary_SoundFormat", Strings.Get("EqPreset_Off"), Strings.Get("On")));
+    }
+
+    [Test]
+    public async Task WhenEqualizerIsResetThenOffPresetIsSent()
+    {
+        var device = CreateDevice(ConnectedState() with { Equalizer = new EqualizerState(EqualizerPreset.BassBoost, 0, [0, 0, 0, 0, 0]) });
+        using var viewModel = CreateViewModel(device);
+
+        viewModel.ResetEqualizerCommand.Execute(null);
+
+        await device.Received(1).SetEqualizerPresetAsync(EqualizerPreset.Off, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
     public async Task WhenSetterFailsThenStatusMessageShowsError()
     {
         var device = CreateDevice(ConnectedState());

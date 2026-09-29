@@ -1,161 +1,420 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:HeadphoneControl.ViewModels"
+        xmlns:v="using:HeadphoneControl.Views"
+        xmlns:dev="using:HeadphoneControl.Protocol.Devices"
         xmlns:res="using:HeadphoneControl.Resources"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="900"
+        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="820"
         x:Class="HeadphoneControl.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Width="760" Height="900" MinWidth="560" MinHeight="480"
+        Width="420" MinWidth="380" SizeToContent="Height" WindowStartupLocation="CenterScreen"
         Title="{x:Static res:Strings.AppTitle}">
 
     <Window.Styles>
         <Style Selector="Border.card">
-            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Padding" Value="14" />
         </Style>
-        <Style Selector="TextBlock.heading">
-            <Setter Property="FontSize" Value="16" />
+        <Style Selector="TextBlock.sectionTitle">
+            <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="LetterSpacing" Value="0.6" />
+            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
         </Style>
-        <Style Selector="TextBlock.caption">
-            <Setter Property="Opacity" Value="0.7" />
+
+        <Style Selector="ToggleButton.sectionHeader">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="8" />
+            <Setter Property="Margin" Value="-8" />
+            <Setter Property="CornerRadius" Value="8" />
         </Style>
-        <!-- Fluent has no disabled look for plain TextBlocks, so dim a disabled setting row's labels. -->
-        <Style Selector="Grid.setting:disabled > TextBlock">
-            <Setter Property="Opacity" Value="0.4" />
+        <Style Selector="ToggleButton.sectionHeader:checked /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+        </Style>
+        <Style Selector="ToggleButton.sectionHeader:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+        </Style>
+        <Style Selector="ToggleButton.sectionHeader:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillHoverBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.sectionHeader v|StrokeIcon.chevron">
+            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.sectionHeader:checked v|StrokeIcon.chevron">
+            <Setter Property="RenderTransform" Value="rotate(180deg)" />
+        </Style>
+
+        <Style Selector="ListBox.tiles">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="-3,0" />
+        </Style>
+        <Style Selector="ListBox.tiles ListBoxItem">
+            <Setter Property="Height" Value="72" />
+            <Setter Property="Margin" Value="3,0" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+        </Style>
+        <Style Selector="ListBox.tiles ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+        <Style Selector="ListBox.tiles ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillHoverBrush}" />
+        </Style>
+        <Style Selector="ListBox.tiles ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentButtonBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
+        </Style>
+        <Style Selector="ListBox.tiles ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
+        </Style>
+        <Style Selector="ListBox.tiles ListBoxItem:selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPressed}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
+        </Style>
+
+        <Style Selector="Button.icon">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="Ellipse.statusDot">
+            <Setter Property="Fill" Value="{DynamicResource MutedTextBrush}" />
+        </Style>
+        <Style Selector="Ellipse.statusDot.connecting">
+            <Setter Property="Fill" Value="{DynamicResource AccentButtonBackground}" />
+        </Style>
+        <Style Selector="Ellipse.statusDot.connected">
+            <Setter Property="Fill" Value="{DynamicResource ConnectedBrush}" />
+        </Style>
+        <Style Selector="Ellipse.statusDot.failed">
+            <Setter Property="Fill" Value="{DynamicResource LowBatteryBrush}" />
+        </Style>
+        <Style Selector="Arc.batteryLevel">
+            <Setter Property="Stroke" Value="{DynamicResource AccentButtonBackground}" />
+        </Style>
+        <Style Selector="Arc.batteryLevel.low">
+            <Setter Property="Stroke" Value="{DynamicResource LowBatteryBrush}" />
+        </Style>
+
+        <!-- The card text has no disabled look of its own, so dim it while the setting cannot be edited. -->
+        <Style Selector=".setting:disabled TextBlock">
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+
+        <Style Selector="Arc.spinner[IsVisible=True]">
+            <Style.Animations>
+                <Animation Duration="0:0:0.9" IterationCount="Infinite">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="RotateTransform.Angle" Value="0" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="RotateTransform.Angle" Value="360" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+
+        <Style Selector="ToggleSwitch.bare">
+            <Setter Property="OnContent" Value="{x:Null}" />
+            <Setter Property="OffContent" Value="{x:Null}" />
+            <Setter Property="MinWidth" Value="0" />
         </Style>
     </Window.Styles>
 
     <Window.Resources>
         <DataTemplate x:Key="BandTemplate" x:DataType="vm:EqualizerBandViewModel">
-            <StackPanel Spacing="4" Width="56">
-                <TextBlock Text="{Binding Value}" HorizontalAlignment="Center" />
-                <Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center"
+            <StackPanel Spacing="4" HorizontalAlignment="Center">
+                <TextBlock Text="{Binding Value, StringFormat='{}{0:+0;−0;0}'}" HorizontalAlignment="Center"
+                           FontSize="12" FontWeight="SemiBold" />
+                <Slider Orientation="Vertical" Height="128" HorizontalAlignment="Center"
                         Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
                         TickFrequency="1" IsSnapToTickEnabled="True"
-                        Value="{Binding Value}" />
-                <TextBlock Text="{Binding Label}" HorizontalAlignment="Center" Classes="caption" TextWrapping="Wrap" TextAlignment="Center" />
+                        Value="{Binding Value}"
+                        AutomationProperties.Name="{Binding Label}" />
+                <TextBlock Text="{Binding Label}" HorizontalAlignment="Center" Classes="muted"
+                           FontSize="11" TextWrapping="Wrap" TextAlignment="Center" />
             </StackPanel>
         </DataTemplate>
     </Window.Resources>
 
-    <DockPanel Margin="16">
+    <DockPanel x:Name="RootPanel">
+        <!-- Fixed-height slot so the window doesn't resize when the bar appears. -->
+        <Panel DockPanel.Dock="Top" Height="2">
+            <ProgressBar IsIndeterminate="{Binding IsOperationRunning}" MinHeight="2" Height="2" CornerRadius="0" Background="Transparent"
+                         IsVisible="{Binding IsOperationRunning}" />
+        </Panel>
 
-        <Border DockPanel.Dock="Top" Classes="card" Margin="0,0,0,12">
-            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
-                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2">
-                    <TextBlock Text="{Binding DeviceName}" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock x:Name="ConnectionStatusText" Text="{Binding ConnectionText}" Classes="caption" />
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="20,10,14,16">
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="{Binding DeviceName}" FontSize="24" FontWeight="SemiBold"
+                           FontFamily="Segoe UI Variable Display, Segoe UI, $Default" />
+                <StackPanel Orientation="Horizontal" Spacing="7" Margin="0,2,0,0">
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center" Classes="statusDot"
+                             Classes.connected="{Binding IsConnected}"
+                             Classes.connecting="{Binding IsConnecting}"
+                             Classes.failed="{Binding IsConnectionFailed}" />
+                    <TextBlock x:Name="ConnectionStatusText" Text="{Binding ConnectionSummary}" Classes="muted" FontSize="13" />
                 </StackPanel>
-                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Button x:Name="ConnectButton" Content="{x:Static res:Strings.Connect}" Command="{Binding ConnectCommand}" />
-                    <Button x:Name="DisconnectButton" Content="{x:Static res:Strings.Disconnect}" Command="{Binding DisconnectCommand}" />
-                    <Button x:Name="RefreshButton" Content="{x:Static res:Strings.Refresh}" Command="{Binding RefreshCommand}" />
-                    <Button x:Name="CancelButton" Content="{x:Static res:Strings.Cancel}" Command="{Binding CancelCommand}" />
+            </StackPanel>
+
+            <Panel Grid.Column="1" Width="52" Height="52" Margin="0,0,8,0"
+                   IsVisible="{Binding HasBattery}"
+                   ToolTip.Tip="{Binding BatteryText}">
+                <Arc StartAngle="-90" SweepAngle="360" StrokeThickness="5" Margin="2.5"
+                     Stroke="{DynamicResource SubtleFillBrush}" />
+                <Arc StartAngle="-90" StrokeThickness="5" StrokeLineCap="Round" Margin="2.5"
+                     Classes="batteryLevel" Classes.low="{Binding IsBatteryLow}"
+                     SweepAngle="{Binding BatteryLevel, Converter={x:Static v:Converters.PercentToSweep}}" />
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock x:Name="BatteryLevelText" Text="{Binding BatteryLevel}" FontSize="14" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" />
+                    <v:StrokeIcon Data="{x:Static v:Icons.Bolt}" IsFilled="True" Width="10" Height="10"
+                                  HorizontalAlignment="Center" IsVisible="{Binding IsCharging}"
+                                  Foreground="{DynamicResource ConnectedBrush}"
+                                  ToolTip.Tip="{x:Static res:Strings.Label_Charging}" />
                 </StackPanel>
+            </Panel>
 
-                <WrapPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0">
-                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,24,0">
-                        <TextBlock Text="{x:Static res:Strings.Label_Battery}" Classes="caption" />
-                        <TextBlock x:Name="BatteryText" Text="{Binding BatteryText}" FontWeight="SemiBold" />
-                        <TextBlock Text="{x:Static res:Strings.Label_Charging}" IsVisible="{Binding IsCharging}" Foreground="ForestGreen" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,24,0">
-                        <TextBlock Text="{x:Static res:Strings.Label_Codec}" Classes="caption" />
-                        <TextBlock Text="{Binding CodecText}" FontWeight="SemiBold" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{x:Static res:Strings.Label_Firmware}" Classes="caption" />
-                        <TextBlock Text="{Binding FirmwareText}" FontWeight="SemiBold" />
-                    </StackPanel>
-                </WrapPanel>
+            <Button Grid.Column="2" x:Name="MoreButton" Classes="icon" VerticalAlignment="Center"
+                    AutomationProperties.Name="{x:Static res:Strings.MoreOptions}"
+                    ToolTip.Tip="{x:Static res:Strings.MoreOptions}">
+                <v:StrokeIcon Data="{x:Static v:Icons.More}" IsFilled="True" Width="18" Height="18" />
+                <Button.Flyout>
+                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                        <MenuItem Header="{x:Static res:Strings.Menu_RefreshNow}" Command="{Binding RefreshCommand}"
+                                  IsVisible="{Binding IsConnected}" />
+                        <MenuItem Header="{x:Static res:Strings.Menu_CancelOperation}" Command="{Binding CancelCommand}"
+                                  IsVisible="{Binding IsOperationRunning}" />
+                        <MenuItem Header="{x:Static res:Strings.Menu_Diagnostics}" Click="OnDiagnosticsClick" />
+                        <MenuItem Header="{x:Static res:Strings.Disconnect}" Command="{Binding DisconnectCommand}"
+                                  IsVisible="{Binding IsConnected}" />
+                        <Separator IsVisible="{Binding IsConnected}" />
+                        <MenuItem IsEnabled="False" IsVisible="{Binding IsConnected}">
+                            <MenuItem.Header>
+                                <Grid ColumnDefinitions="80,*">
+                                    <TextBlock Text="{x:Static res:Strings.Label_Codec}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding CodecText}" />
+                                </Grid>
+                            </MenuItem.Header>
+                        </MenuItem>
+                        <MenuItem IsEnabled="False" IsVisible="{Binding IsConnected}">
+                            <MenuItem.Header>
+                                <Grid ColumnDefinitions="80,*">
+                                    <TextBlock Text="{x:Static res:Strings.Label_Firmware}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding FirmwareText}" />
+                                </Grid>
+                            </MenuItem.Header>
+                        </MenuItem>
+                    </MenuFlyout>
+                </Button.Flyout>
+            </Button>
+        </Grid>
 
-                <ProgressBar Grid.Row="2" Grid.ColumnSpan="2" Margin="0,10,0,0"
-                             IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
-            </Grid>
-        </Border>
+        <ScrollViewer x:Name="ContentScroller">
+            <StackPanel Spacing="10" Margin="12,0,12,16">
 
-        <SelectableTextBlock x:Name="StatusLine" DockPanel.Dock="Bottom" Margin="2,10,2,0"
-                             Text="{Binding StatusMessage}" TextWrapping="Wrap" />
-
-        <ScrollViewer>
-            <StackPanel Spacing="12">
-
-                <Border Classes="card">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="{x:Static res:Strings.Section_NoiseControl}" Classes="heading" />
-                        <ListBox x:Name="NoiseModeList"
-                                 ItemsSource="{Binding NoiseModes}"
-                                 SelectedItem="{Binding SelectedNoiseMode}"
-                                 IsEnabled="{Binding CanEditNoiseControl}">
-                            <ListBox.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal" Spacing="4" />
-                                </ItemsPanelTemplate>
-                            </ListBox.ItemsPanel>
-                        </ListBox>
-                        <!-- Always visible like DSEE; the headset only applies these settings in Ambient mode. -->
-                        <Grid Classes="setting" ColumnDefinitions="Auto,*,Auto" IsEnabled="{Binding CanEditAmbient}">
-                            <TextBlock Grid.Column="0" Text="{x:Static res:Strings.Label_AmbientLevel}" VerticalAlignment="Center" Margin="0,0,12,0" />
-                            <Slider x:Name="AmbientLevelSlider" Grid.Column="1"
-                                    Minimum="1" Maximum="20" TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding AmbientLevel}" />
-                            <TextBlock Grid.Column="2" Text="{Binding AmbientLevel}" MinWidth="24" TextAlignment="Right" VerticalAlignment="Center" />
-                        </Grid>
-                        <ToggleSwitch x:Name="FocusOnVoiceToggle" Content="{x:Static res:Strings.Label_FocusOnVoice}"
-                                      IsChecked="{Binding FocusOnVoice}" IsEnabled="{Binding CanEditAmbient}" />
-                    </StackPanel>
+                <!-- Failures and warnings only; routine confirmations stay silent. -->
+                <Border x:Name="AlertBar" IsVisible="{Binding IsAlertVisible}" Padding="12" CornerRadius="10" BorderThickness="1"
+                        Background="{DynamicResource AlertBackgroundBrush}" BorderBrush="{DynamicResource AlertBorderBrush}">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <v:StrokeIcon Data="{x:Static v:Icons.Alert}" Width="18" Height="18" StrokeThickness="2"
+                                      VerticalAlignment="Top" Margin="0,1,10,0"
+                                      Foreground="{DynamicResource AlertTextBrush}" />
+                        <SelectableTextBlock Grid.Column="1" x:Name="StatusLine" Text="{Binding StatusMessage}"
+                                             TextWrapping="Wrap" Foreground="{DynamicResource AlertTextBrush}" />
+                        <Button Grid.Column="2" Classes="icon" Width="28" Height="28" Margin="6,-4,-4,0" VerticalAlignment="Top"
+                                Command="{Binding DismissAlertCommand}"
+                                AutomationProperties.Name="{x:Static res:Strings.Dismiss}">
+                            <v:StrokeIcon Data="{x:Static v:Icons.Close}" Width="14" Height="14" StrokeThickness="2"
+                                          Foreground="{DynamicResource AlertTextBrush}" />
+                        </Button>
+                    </Grid>
                 </Border>
 
-                <Border Classes="card">
-                    <StackPanel Spacing="10" IsEnabled="{Binding CanEditEqualizer}">
-                        <TextBlock Text="{x:Static res:Strings.Section_Equalizer}" Classes="heading" />
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <TextBlock Text="{x:Static res:Strings.Label_Preset}" VerticalAlignment="Center" />
-                            <ComboBox x:Name="PresetCombo" MinWidth="200"
-                                      ItemsSource="{Binding Presets}"
-                                      SelectedItem="{Binding SelectedPreset}"
-                                      PlaceholderText="{x:Static res:Strings.Unknown}" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="18">
-                            <ContentControl Content="{Binding ClearBass}" ContentTemplate="{StaticResource BandTemplate}" />
-                            <Rectangle Width="1" Fill="{DynamicResource SystemControlForegroundBaseLowBrush}" />
-                            <ItemsControl ItemsSource="{Binding Bands}" ItemTemplate="{StaticResource BandTemplate}">
-                                <ItemsControl.ItemsPanel>
+                <!-- Not connected: one clear action instead of a disabled form. -->
+                <StackPanel IsVisible="{Binding !IsConnected}" Spacing="10" Margin="28,56,28,64"
+                            HorizontalAlignment="Center">
+                    <Border Width="88" Height="88" CornerRadius="44" Background="{DynamicResource SubtleFillBrush}"
+                            HorizontalAlignment="Center" Margin="0,0,0,6">
+                        <Panel>
+                            <v:StrokeIcon Data="{x:Static v:Icons.Headphones}" Width="40" Height="40" StrokeThickness="1.6"
+                                          Foreground="{DynamicResource MutedTextBrush}" IsVisible="{Binding !IsConnecting}" />
+                            <Arc Classes="spinner" Width="40" Height="40" StartAngle="0" SweepAngle="270"
+                                 StrokeThickness="3" StrokeLineCap="Round"
+                                 Stroke="{DynamicResource AccentButtonBackground}"
+                                 IsVisible="{Binding IsConnecting}">
+                                <Arc.RenderTransform>
+                                    <RotateTransform />
+                                </Arc.RenderTransform>
+                            </Arc>
+                        </Panel>
+                    </Border>
+                    <TextBlock Text="{Binding EmptyStateTitle}" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding EmptyStateBody}" Classes="muted" FontSize="13" MaxWidth="290"
+                               TextWrapping="Wrap" TextAlignment="Center" LineHeight="19" HorizontalAlignment="Center" />
+                    <Panel Margin="0,10,0,0" HorizontalAlignment="Center">
+                        <Button x:Name="ConnectButton" Classes="accent" MinWidth="150" Height="40"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                Content="{Binding ConnectButtonText}" Command="{Binding ConnectCommand}"
+                                IsVisible="{Binding !IsConnecting}" />
+                        <Button x:Name="CancelButton" MinWidth="150" Height="40"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                Content="{x:Static res:Strings.Cancel}" Command="{Binding CancelCommand}"
+                                IsVisible="{Binding IsConnecting}" />
+                    </Panel>
+                </StackPanel>
+
+                <Border Classes="card" IsVisible="{Binding IsConnected}">
+                    <StackPanel>
+                        <ToggleButton x:Name="NoiseSectionHeader" Classes="sectionHeader" IsChecked="{Binding IsNoiseSectionExpanded}"
+                                      AutomationProperties.Name="{x:Static res:Strings.Section_NoiseControl}">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <TextBlock Classes="sectionTitle" VerticalAlignment="Center"
+                                           Text="{Binding Source={x:Static res:Strings.Section_NoiseControl}, Converter={x:Static v:Converters.ToUpper}}" />
+                                <TextBlock Grid.Column="1" Text="{Binding NoiseSummary}" FontSize="13" Margin="8,0"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                           IsVisible="{Binding !IsNoiseSectionExpanded}" />
+                                <v:StrokeIcon Grid.Column="2" Classes="chevron" Data="{x:Static v:Icons.Chevron}"
+                                              Width="14" Height="14" StrokeThickness="2.2" VerticalAlignment="Center" />
+                            </Grid>
+                        </ToggleButton>
+
+                        <StackPanel IsVisible="{Binding IsNoiseSectionExpanded}" Margin="0,18,0,0" Spacing="12"
+                                    IsEnabled="{Binding CanEditNoiseControl}">
+                            <ListBox x:Name="NoiseModeList" Classes="tiles"
+                                     ItemsSource="{Binding NoiseModes}"
+                                     SelectedItem="{Binding SelectedNoiseMode}"
+                                     AutomationProperties.Name="{x:Static res:Strings.Section_NoiseControl}">
+                                <ListBox.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal" Spacing="18" />
+                                        <UniformGrid Columns="3" />
                                     </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                            </ItemsControl>
+                                </ListBox.ItemsPanel>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="{x:Type vm:Choice, x:TypeArguments=dev:NoiseControlMode}">
+                                        <StackPanel Spacing="6">
+                                            <v:StrokeIcon Width="22" Height="22" HorizontalAlignment="Center"
+                                                          Data="{Binding Value, Converter={x:Static v:Converters.NoiseModeIcon}}" />
+                                            <TextBlock Text="{Binding Label}" FontSize="12.5" TextAlignment="Center"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <!-- The headset applies these only in Ambient mode, so they appear only there. -->
+                            <Border IsVisible="{Binding IsAmbientMode}" CornerRadius="10" Padding="12,10,12,4"
+                                    Background="{DynamicResource SubtleFillBrush}">
+                                <StackPanel Classes="setting" IsEnabled="{Binding CanEditAmbient}">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="{x:Static res:Strings.Label_AmbientLevel}" FontSize="13" />
+                                        <TextBlock Grid.Column="1" Text="{Binding AmbientLevel}" FontSize="13" FontWeight="SemiBold" />
+                                    </Grid>
+                                    <Slider x:Name="AmbientLevelSlider"
+                                            Minimum="1" Maximum="20" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding AmbientLevel}"
+                                            AutomationProperties.Name="{x:Static res:Strings.Label_AmbientLevel}" />
+                                    <Grid ColumnDefinitions="*,Auto" MinHeight="40">
+                                        <TextBlock Text="{x:Static res:Strings.Label_FocusOnVoice}" FontSize="13" VerticalAlignment="Center" />
+                                        <ToggleSwitch Grid.Column="1" x:Name="FocusOnVoiceToggle" Classes="bare"
+                                                      IsChecked="{Binding FocusOnVoice}"
+                                                      AutomationProperties.Name="{x:Static res:Strings.Label_FocusOnVoice}" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </StackPanel>
                 </Border>
 
-                <Border Classes="card">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="{x:Static res:Strings.Section_Sound}" Classes="heading" />
-                        <ToggleSwitch x:Name="DseeToggle" Content="{x:Static res:Strings.Label_Dsee}"
-                                      IsChecked="{Binding IsDseeEnabled}" IsEnabled="{Binding CanEditDsee}" />
+                <Border Classes="card" IsVisible="{Binding IsConnected}">
+                    <StackPanel>
+                        <ToggleButton x:Name="SoundSectionHeader" Classes="sectionHeader" IsChecked="{Binding IsSoundSectionExpanded}"
+                                      AutomationProperties.Name="{x:Static res:Strings.Section_Sound}">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <TextBlock Classes="sectionTitle" VerticalAlignment="Center"
+                                           Text="{Binding Source={x:Static res:Strings.Section_Sound}, Converter={x:Static v:Converters.ToUpper}}" />
+                                <TextBlock Grid.Column="1" Text="{Binding SoundSummary}" FontSize="13" Margin="8,0"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                           IsVisible="{Binding !IsSoundSectionExpanded}" />
+                                <v:StrokeIcon Grid.Column="2" Classes="chevron" Data="{x:Static v:Icons.Chevron}"
+                                              Width="14" Height="14" StrokeThickness="2.2" VerticalAlignment="Center" />
+                            </Grid>
+                        </ToggleButton>
+
+                        <StackPanel IsVisible="{Binding IsSoundSectionExpanded}" Margin="0,18,0,0">
+                            <StackPanel Classes="setting" IsEnabled="{Binding CanEditEqualizer}">
+                                <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,10">
+                                    <TextBlock Text="{x:Static res:Strings.Section_Equalizer}" FontSize="13" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Column="1" x:Name="PresetCombo" MinWidth="150"
+                                              ItemsSource="{Binding Presets}"
+                                              SelectedItem="{Binding SelectedPreset}"
+                                              PlaceholderText="{x:Static res:Strings.Unknown}"
+                                              AutomationProperties.Name="{x:Static res:Strings.Label_Preset}" />
+                                    <Button Grid.Column="2" Width="32" Height="32" Padding="0" Margin="6,0,0,0"
+                                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                            Command="{Binding ResetEqualizerCommand}"
+                                            ToolTip.Tip="{x:Static res:Strings.ResetEqualizer}"
+                                            AutomationProperties.Name="{x:Static res:Strings.ResetEqualizer}">
+                                        <v:StrokeIcon Data="{x:Static v:Icons.Reset}" Width="15" Height="15" StrokeThickness="2" />
+                                    </Button>
+                                </Grid>
+
+                                <Grid ColumnDefinitions="56,Auto,*" RowDefinitions="64,Auto">
+                                    <v:EqualizerCurve Grid.Row="0" Grid.Column="2" Margin="0,0,0,4"
+                                                      Bands="{Binding Bands}"
+                                                      Stroke="{DynamicResource AccentButtonBackground}"
+                                                      BaselineBrush="{DynamicResource CardBorderBrush}" />
+                                    <ContentControl Grid.Row="1" Grid.Column="0" Content="{Binding ClearBass}"
+                                                    ContentTemplate="{StaticResource BandTemplate}" />
+                                    <Rectangle Grid.Row="1" Grid.Column="1" Width="1" Margin="4,20,4,28"
+                                               Fill="{DynamicResource CardBorderBrush}" />
+                                    <ItemsControl Grid.Row="1" Grid.Column="2" ItemsSource="{Binding Bands}"
+                                                  ItemTemplate="{StaticResource BandTemplate}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <UniformGrid Columns="5" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                </Grid>
+                            </StackPanel>
+
+                            <Rectangle Height="1" Margin="-14,14,-14,4" Fill="{DynamicResource CardBorderBrush}" />
+
+                            <Grid Classes="setting" ColumnDefinitions="*,Auto" MinHeight="48" IsEnabled="{Binding CanEditDsee}">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Static res:Strings.Label_Dsee}" />
+                                    <TextBlock Text="{x:Static res:Strings.Label_DseeCaption}" Classes="muted" FontSize="12" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" x:Name="DseeToggle" Classes="bare"
+                                              IsChecked="{Binding IsDseeEnabled}"
+                                              AutomationProperties.Name="{x:Static res:Strings.Label_Dsee}" />
+                            </Grid>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
-
-                <Expander x:Name="DiagnosticsExpander" Header="{x:Static res:Strings.Section_Diagnostics}"
-                          HorizontalAlignment="Stretch">
-                    <DockPanel>
-                        <Button DockPanel.Dock="Top" HorizontalAlignment="Right" Margin="0,0,0,6"
-                                Content="{x:Static res:Strings.Clear}" Command="{Binding Diagnostics.ClearCommand}" />
-                        <TextBox x:Name="DiagnosticsText" Height="240" IsReadOnly="True"
-                                 AcceptsReturn="True" TextWrapping="NoWrap"
-                                 FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
-                                 Text="{Binding Diagnostics.Text, Mode=OneWay}" />
-                    </DockPanel>
-                </Expander>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

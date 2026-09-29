@@ -8,7 +8,48 @@
         <local:ViewLocator />
     </Application.DataTemplates>
 
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F4F3F0" />
+                    <SolidColorBrush x:Key="CardBackgroundBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="CardBorderBrush" Color="#DDDAD3" />
+                    <SolidColorBrush x:Key="SubtleFillBrush" Color="#EDEBE6" />
+                    <SolidColorBrush x:Key="SubtleFillHoverBrush" Color="#E3E0DA" />
+                    <SolidColorBrush x:Key="MutedTextBrush" Color="#5E5B55" />
+                    <SolidColorBrush x:Key="AlertBackgroundBrush" Color="#FBEAE4" />
+                    <SolidColorBrush x:Key="AlertBorderBrush" Color="#EFC3B4" />
+                    <SolidColorBrush x:Key="AlertTextBrush" Color="#86290F" />
+                    <SolidColorBrush x:Key="ConnectedBrush" Color="#1E7B45" />
+                    <SolidColorBrush x:Key="LowBatteryBrush" Color="#B4380F" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#1C1C1B" />
+                    <SolidColorBrush x:Key="CardBackgroundBrush" Color="#262625" />
+                    <SolidColorBrush x:Key="CardBorderBrush" Color="#3B3B38" />
+                    <SolidColorBrush x:Key="SubtleFillBrush" Color="#31312F" />
+                    <SolidColorBrush x:Key="SubtleFillHoverBrush" Color="#3A3A37" />
+                    <SolidColorBrush x:Key="MutedTextBrush" Color="#ADAAA3" />
+                    <SolidColorBrush x:Key="AlertBackgroundBrush" Color="#3A211A" />
+                    <SolidColorBrush x:Key="AlertBorderBrush" Color="#5C3326" />
+                    <SolidColorBrush x:Key="AlertTextBrush" Color="#F6BDAA" />
+                    <SolidColorBrush x:Key="ConnectedBrush" Color="#6FD39B" />
+                    <SolidColorBrush x:Key="LowBatteryBrush" Color="#F08A6A" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
+
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{DynamicResource WindowBackgroundBrush}" />
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI, $Default" />
+        </Style>
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+        </Style>
     </Application.Styles>
 </Application>

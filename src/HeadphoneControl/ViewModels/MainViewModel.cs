@@ -13,6 +13,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 {
     private const int MinAmbientLevel = 1;
     private const int MaxAmbientLevel = 20;
+    private const int LowBatteryLevel = 20;
 
     private readonly IHeadphoneDevice _device;
     private readonly ILogger _logger;
@@ -37,6 +38,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private int _runningSettingSends;
     private int _lastAmbientLevel = 10;
     private bool _lastFocusOnVoice;
+    private bool _isCodecKnown;
 
     public MainViewModel(
         IHeadphoneDevice device,
@@ -61,7 +63,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Diagnostics = diagnostics;
         DeviceName = device.Name;
 
-        NoiseModes = DisplayNames.ChoicesOf<NoiseControlMode>(DisplayNames.Of);
+        NoiseModes = [.. new[] { NoiseControlMode.NoiseCancelling, NoiseControlMode.Ambient, NoiseControlMode.Off }
+            .Select(mode => new Choice<NoiseControlMode>(mode, DisplayNames.Of(mode)))];
         Presets = DisplayNames.ChoicesOf<EqualizerPreset>(DisplayNames.Of);
         ClearBass = new EqualizerBandViewModel(Strings.Get("EqBand_ClearBass"));
         Bands =
@@ -79,8 +82,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         _connectionCommands = [ConnectCommand, DisconnectCommand, RefreshCommand];
+        ConnectCommand.PropertyChanged += OnConnectCommandChanged;
 
-        StatusMessage = Strings.Get("Status_Ready");
+        SetStatus(new Status(Strings.Get("Status_Ready"), StatusSeverity.Info));
         ApplyState(device.State);
         _device.StateChanged += OnDeviceStateChanged;
     }
@@ -98,15 +102,18 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public IReadOnlyList<EqualizerBandViewModel> Bands { get; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ConnectionText), nameof(IsConnected))]
+    [NotifyPropertyChangedFor(nameof(ConnectionText), nameof(ConnectionSummary), nameof(IsConnected), nameof(IsConnectionFailed),
+        nameof(IsConnecting), nameof(EmptyStateTitle), nameof(EmptyStateBody), nameof(ConnectButtonText))]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand), nameof(DisconnectCommand), nameof(RefreshCommand))]
     public partial ConnectionStatus Connection { get; private set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOperationRunning))]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand), nameof(DisconnectCommand), nameof(RefreshCommand), nameof(CancelCommand))]
     public partial bool IsBusy { get; private set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOperationRunning))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
     public partial bool IsApplyingSettings { get; private set; }
 
@@ -114,7 +121,23 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public partial string StatusMessage { get; private set; } = string.Empty;
 
     [ObservableProperty]
+    public partial StatusSeverity StatusSeverity { get; private set; }
+
+    // Failures and warnings surface in an info bar; routine confirmations only update StatusMessage.
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(DismissAlertCommand))]
+    public partial bool IsAlertVisible { get; private set; }
+
+    [ObservableProperty]
     public partial string BatteryText { get; private set; } = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBatteryLow))]
+    public partial int BatteryLevel { get; private set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBatteryLow))]
+    public partial bool HasBattery { get; private set; }
 
     [ObservableProperty]
     public partial bool IsCharging { get; private set; }
@@ -123,7 +146,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public partial string FirmwareText { get; private set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConnectionSummary))]
     public partial string CodecText { get; private set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsNoiseSectionExpanded { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IsSoundSectionExpanded { get; set; } = true;
 
     [ObservableProperty]
     public partial bool HasNoiseControl { get; private set; }
@@ -152,7 +182,43 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     public string ConnectionText => DisplayNames.Of(Connection);
 
+    public string ConnectionSummary => IsConnected && _isCodecKnown
+        ? Strings.Format("ConnectionWithCodecFormat", ConnectionText, CodecText)
+        : ConnectionText;
+
     public bool IsConnected => Connection == ConnectionStatus.Connected;
+
+    public bool IsConnectionFailed => Connection == ConnectionStatus.Failed;
+
+    // Also true before the device reports Connecting, so the connect screen reacts to the click at once. Only the
+    // connect command counts: Disconnect and Refresh are busy too, and the link may already read Disconnected then.
+    public bool IsConnecting => !IsConnected && (ConnectCommand.IsRunning || Connection == ConnectionStatus.Connecting);
+
+    public bool IsOperationRunning => IsBusy || IsApplyingSettings;
+
+    public bool IsBatteryLow => HasBattery && BatteryLevel <= LowBatteryLevel;
+
+    public string EmptyStateTitle => IsConnecting
+        ? DisplayNames.Of(ConnectionStatus.Connecting)
+        : Strings.Get(IsConnectionFailed ? "EmptyState_FailedTitle" : "EmptyState_DisconnectedTitle");
+
+    public string EmptyStateBody => Strings.Get(IsConnecting
+        ? "EmptyState_ConnectingBody"
+        : IsConnectionFailed ? "EmptyState_FailedBody" : "EmptyState_DisconnectedBody");
+
+    public string ConnectButtonText => Strings.Get(IsConnectionFailed ? "TryAgain" : "Connect");
+
+    public string NoiseSummary => SelectedNoiseMode switch
+    {
+        null => Strings.UnknownValue,
+        { Value: NoiseControlMode.Ambient } mode => Strings.Format("Summary_AmbientFormat", mode.Label, AmbientLevel),
+        var mode => mode.Label,
+    };
+
+    public string SoundSummary => Strings.Format(
+        "Summary_SoundFormat",
+        HasEqualizer ? SelectedPreset?.Label ?? Strings.UnknownValue : Strings.UnknownValue,
+        HasDsee ? Strings.Get(IsDseeEnabled ? "On" : "Off") : Strings.UnknownValue);
 
     public bool IsAmbientMode => SelectedNoiseMode?.Value == NoiseControlMode.Ambient;
 
@@ -170,6 +236,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public void Dispose()
     {
         _device.StateChanged -= OnDeviceStateChanged;
+        ConnectCommand.PropertyChanged -= OnConnectCommandChanged;
         Cancel();
         Diagnostics.Dispose();
     }
@@ -185,6 +252,17 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(CanEditAmbient)));
             base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(CanEditEqualizer)));
             base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(CanEditDsee)));
+            ResetEqualizerCommand.NotifyCanExecuteChanged();
+        }
+
+        if (e.PropertyName is nameof(SelectedNoiseMode) or nameof(AmbientLevel))
+        {
+            base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(NoiseSummary)));
+        }
+
+        if (e.PropertyName is nameof(SelectedPreset) or nameof(IsDseeEnabled) or nameof(HasDsee) or nameof(HasEqualizer))
+        {
+            base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(SoundSummary)));
         }
     }
 
@@ -196,15 +274,22 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private Task ConnectAsync(CancellationToken cancellationToken) =>
-        RunConnectionOperationAsync("Operation_Connect", _device.ConnectAsync, () => Strings.Format("Status_ConnectedFormat", DeviceName), cancellationToken);
+        RunConnectionOperationAsync("Operation_Connect", _device.ConnectAsync, () => Status.Info(Strings.Format("Status_ConnectedFormat", DeviceName)), cancellationToken);
 
     [RelayCommand(CanExecute = nameof(CanUseConnectedDevice))]
     private Task DisconnectAsync(CancellationToken cancellationToken) =>
-        RunConnectionOperationAsync("Operation_Disconnect", _device.DisconnectAsync, () => Strings.Get("Status_Disconnected"), cancellationToken);
+        RunConnectionOperationAsync("Operation_Disconnect", _device.DisconnectAsync, () => Status.Info(Strings.Get("Status_Disconnected")), cancellationToken);
 
     [RelayCommand(CanExecute = nameof(CanUseConnectedDevice))]
     private Task RefreshAsync(CancellationToken cancellationToken) =>
-        RunConnectionOperationAsync("Operation_Refresh", _device.RefreshAsync, () => Strings.Get("Status_Refreshed"), cancellationToken);
+        RunConnectionOperationAsync("Operation_Refresh", _device.RefreshAsync, () => Status.Info(Strings.Get("Status_Refreshed")), cancellationToken);
+
+    [RelayCommand(CanExecute = nameof(IsAlertVisible))]
+    private void DismissAlert() => IsAlertVisible = false;
+
+    // Preset Off is the device's flat curve; selecting it sends the preset like a user pick would.
+    [RelayCommand(CanExecute = nameof(CanEditEqualizer))]
+    private void ResetEqualizer() => SelectedPreset = Presets.First(p => p.Value == EqualizerPreset.Off);
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
@@ -234,9 +319,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             debounce: false,
             ct => _device.SetEqualizerPresetAsync(preset, ct),
             // The device re-reads the EQ after a preset change; if that read fails the EQ card is disabled until Refresh.
-            () => Strings.Get(_device.State is { Connection: ConnectionStatus.Connected, Equalizer: null }
-                ? "Status_EqualizerUnknown"
-                : "Status_Applied"));
+            () => _device.State is { Connection: ConnectionStatus.Connected, Equalizer: null }
+                ? new Status(Strings.Get("Status_EqualizerUnknown"), StatusSeverity.Warning)
+                : Status.Info(Strings.Get("Status_Applied")));
 
     [RelayCommand]
     private Task ApplyCustomEqualizerAsync(SettingEdit<EqualizerState> edit)
@@ -257,6 +342,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         if (value is null)
         {
+            // Ctrl+click can clear the tile selection; a mode is always active on the headset, so show it again.
+            if (!_applyingState && _device.State.NoiseControl is { } noise)
+            {
+                ApplyLocally(() => SelectedNoiseMode = NoiseModes.First(m => m.Value == noise.Mode));
+            }
+
             return;
         }
 
@@ -318,6 +409,16 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ApplyCustomEqualizerCommand.Execute(new SettingEdit<EqualizerState>(curve, Debounce: true));
     }
 
+    private void OnConnectCommandChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IAsyncRelayCommand.IsRunning))
+        {
+            OnPropertyChanged(nameof(IsConnecting));
+            OnPropertyChanged(nameof(EmptyStateTitle));
+            OnPropertyChanged(nameof(EmptyStateBody));
+        }
+    }
+
     private NoiseControlState CurrentNoiseControl(NoiseControlMode mode) =>
         new(mode, EffectiveFocusOnVoice(mode), Math.Clamp(_lastAmbientLevel, MinAmbientLevel, MaxAmbientLevel));
 
@@ -334,8 +435,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         BatteryText = state.Battery is { } battery
             ? Strings.Format("BatteryLevelFormat", battery.Level)
             : Strings.UnknownValue;
+        HasBattery = state.Battery is not null;
+        BatteryLevel = state.Battery?.Level ?? 0;
         IsCharging = state.Battery?.IsCharging ?? false;
         FirmwareText = state.FirmwareVersion ?? Strings.UnknownValue;
+        _isCodecKnown = state.Codec is not null;
         CodecText = state.Codec is { } codec ? DisplayNames.Of(codec) : Strings.UnknownValue;
 
         HasNoiseControl = state.NoiseControl is not null;
@@ -388,7 +492,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private async Task RunConnectionOperationAsync(
         string operationKey,
         Func<CancellationToken, Task> operation,
-        Func<string> successMessage,
+        Func<Status> success,
         CancellationToken cancellationToken)
     {
         IsBusy = Interlocked.Increment(ref _runningConnectionOperations) > 0;
@@ -409,7 +513,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                         _operationGate.Release();
                     }
                 },
-                successMessage,
+                success,
                 cancellationToken);
         }
         finally
@@ -424,7 +528,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         string operationKey,
         bool debounce,
         Func<CancellationToken, Task> send,
-        Func<string>? successMessage = null)
+        Func<Status>? success = null)
     {
         var version = group.BeginEdit();
         IsApplyingSettings = Interlocked.Increment(ref _runningSettingSends) > 0;
@@ -456,7 +560,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                         _operationGate.Release();
                     }
                 },
-                successMessage ?? (() => Strings.Get("Status_Applied")),
+                success ?? (() => Status.Info(Strings.Get("Status_Applied"))),
                 _settingsCancellation.Token);
         }
         finally
@@ -473,7 +577,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private async Task RunGuardedAsync(
         string operationKey,
         Func<CancellationToken, Task<bool>> operation,
-        Func<string> successMessage,
+        Func<Status> success,
         CancellationToken cancellationToken)
     {
         var operationName = Strings.Get(operationKey);
@@ -481,23 +585,23 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         {
             if (await operation(cancellationToken))
             {
-                StatusMessage = successMessage();
+                SetStatus(success());
                 _logger.LogInformation("{Operation} succeeded", operationName);
             }
         }
         catch (OperationCanceledException)
         {
-            StatusMessage = Strings.Get("Status_Cancelled");
+            SetStatus(Status.Info(Strings.Get("Status_Cancelled")));
             _logger.LogInformation("{Operation} cancelled", operationName);
         }
         catch (NotSupportedException ex)
         {
-            StatusMessage = Strings.Format("Status_NotSupportedFormat", operationName);
+            SetStatus(new Status(Strings.Format("Status_NotSupportedFormat", operationName), StatusSeverity.Error));
             _logger.LogError(ex, "{Operation} refused: not a confirmed V2 device", operationName);
         }
         catch (Exception ex) when (IsDeviceFailure(ex))
         {
-            StatusMessage = Strings.Format("Status_FailedFormat", operationName, ex.Message);
+            SetStatus(new Status(Strings.Format("Status_FailedFormat", operationName, ex.Message), StatusSeverity.Error));
             _logger.LogError(ex, "{Operation} failed", operationName);
         }
     }
@@ -506,6 +610,18 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private static bool IsDeviceFailure(Exception ex) =>
         ex is IOException or TimeoutException or NotSupportedException or FormatException
             or InvalidOperationException or ArgumentException;
+
+    private void SetStatus(Status status)
+    {
+        StatusMessage = status.Message;
+        StatusSeverity = status.Severity;
+        IsAlertVisible = status.Severity != StatusSeverity.Info;
+    }
+
+    private readonly record struct Status(string Message, StatusSeverity Severity)
+    {
+        public static Status Info(string message) => new(message, StatusSeverity.Info);
+    }
 
     private sealed class SettingGroup
     {

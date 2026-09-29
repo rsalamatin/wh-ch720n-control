@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Resources;
 
 namespace HeadphoneControl.Resources;
@@ -19,15 +19,12 @@ public static class Strings
         string.Format(CultureInfo.CurrentCulture, Get(key), args);
 
     public static string AppTitle => Get(nameof(AppTitle));
-    public static string Connect => Get(nameof(Connect));
     public static string Disconnect => Get(nameof(Disconnect));
-    public static string Refresh => Get(nameof(Refresh));
     public static string Cancel => Get(nameof(Cancel));
     public static string Clear => Get(nameof(Clear));
     public static string Unknown => Get(nameof(Unknown));
     public static string UnknownValue => Get(nameof(UnknownValue));
 
-    public static string Label_Battery => Get(nameof(Label_Battery));
     public static string Label_Firmware => Get(nameof(Label_Firmware));
     public static string Label_Codec => Get(nameof(Label_Codec));
     public static string Label_Charging => Get(nameof(Label_Charging));
@@ -35,10 +32,21 @@ public static class Strings
     public static string Section_NoiseControl => Get(nameof(Section_NoiseControl));
     public static string Section_Equalizer => Get(nameof(Section_Equalizer));
     public static string Section_Sound => Get(nameof(Section_Sound));
-    public static string Section_Diagnostics => Get(nameof(Section_Diagnostics));
 
     public static string Label_FocusOnVoice => Get(nameof(Label_FocusOnVoice));
     public static string Label_AmbientLevel => Get(nameof(Label_AmbientLevel));
     public static string Label_Preset => Get(nameof(Label_Preset));
     public static string Label_Dsee => Get(nameof(Label_Dsee));
+    public static string Label_DseeCaption => Get(nameof(Label_DseeCaption));
+
+    public static string MoreOptions => Get(nameof(MoreOptions));
+    public static string Menu_RefreshNow => Get(nameof(Menu_RefreshNow));
+    public static string Menu_CancelOperation => Get(nameof(Menu_CancelOperation));
+    public static string Menu_Diagnostics => Get(nameof(Menu_Diagnostics));
+    public static string Dismiss => Get(nameof(Dismiss));
+    public static string ResetEqualizer => Get(nameof(ResetEqualizer));
+    public static string CopyAll => Get(nameof(CopyAll));
+    public static string OpenLogFolder => Get(nameof(OpenLogFolder));
+    public static string DiagnosticsTitle => Get(nameof(DiagnosticsTitle));
+    public static string DiagnosticsHint => Get(nameof(DiagnosticsHint));
 }
