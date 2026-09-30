@@ -19,7 +19,7 @@ public class ProtocolSessionAckTests
     [Arguments((byte)1, (byte)0)]
     public async Task WhenDataMdrArrivesThenAckWithOppositeSequenceIsWritten(byte deviceSequence, byte expectedAckSequence)
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
 
         transport.QueueIncoming(Data(deviceSequence, 0x69, 0x17));
@@ -31,7 +31,7 @@ public class ProtocolSessionAckTests
     [Test]
     public async Task WhenAckArrivesThenNoAckIsWrittenBack()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
 
         // The trailing DATA_MDR proves the ACK before it has been processed.
@@ -48,7 +48,7 @@ public class ProtocolSessionAckTests
     [Arguments(FrameType.ShotMdr)]
     public async Task WhenNonMdrFrameArrivesThenItIsAcked(FrameType type)
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
 
         transport.QueueIncoming(new Frame(type, 0, new byte[] { 0x01 }));
@@ -60,7 +60,7 @@ public class ProtocolSessionAckTests
     [Test]
     public async Task WhenNonMdrFrameArrivesThenItIsNotRaisedAsNotification()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         var first = NextNotificationAsync(session);
 
@@ -74,7 +74,7 @@ public class ProtocolSessionAckTests
     [Test]
     public async Task WhenDeviceRetransmitsFrameThenEveryCopyIsAcked()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
 
         transport.QueueIncoming(Convert.FromHexString(RealDeviceInitReply));
@@ -86,7 +86,7 @@ public class ProtocolSessionAckTests
     [Test]
     public async Task WhenDeviceRetransmitsFrameThenItIsDispatchedOnce()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         var payloads = new List<string>();
         session.NotificationReceived += (_, frame) => payloads.Add(Hex(frame.Payload));
@@ -103,7 +103,7 @@ public class ProtocolSessionAckTests
     [Test]
     public async Task WhenAckArrivesThenSendAsyncCompletes()
     {
-        var transport = new FakeTransport(connected: true) { AutoAck = true };
+        var transport = new FakeTransport() { AutoAck = true };
         await using var session = await StartSessionAsync(transport);
 
         await session.SendAsync(new byte[] { 0x00, 0x00 }, PatienceToken());
@@ -114,7 +114,7 @@ public class ProtocolSessionAckTests
     [Test]
     public async Task WhenSendAsyncIsCalledThenWireBytesMatchRealDeviceCapture()
     {
-        var transport = new FakeTransport(connected: true) { AutoAck = true };
+        var transport = new FakeTransport() { AutoAck = true };
         await using var session = await StartSessionAsync(transport);
 
         await session.SendAsync(new byte[] { 0x00, 0x00 }, PatienceToken());
@@ -126,7 +126,7 @@ public class ProtocolSessionAckTests
     public async Task WhenNoAckArrivesThenSendAsyncThrowsTimeoutException()
     {
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport, time);
         var send = session.SendAsync(new byte[] { 0x00, 0x00 }, PatienceToken());
         await transport.WaitForWrittenFramesAsync(1, PatienceToken());
@@ -139,7 +139,7 @@ public class ProtocolSessionAckTests
     [Test]
     public async Task WhenEveryWriteIsAckedThenOutgoingSequenceAlternates()
     {
-        var transport = new FakeTransport(connected: true) { AutoAck = true };
+        var transport = new FakeTransport() { AutoAck = true };
         await using var session = await StartSessionAsync(transport);
 
         await session.SendAsync(new byte[] { 0x01 }, PatienceToken());
@@ -156,7 +156,7 @@ public class ProtocolSessionAckTests
     {
         // The real WH-CH720N ACKs seq n with 1 - n; an ACK carrying n is a late ACK for an earlier send.
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport(connected: true) { Responder = frame => [Ack(frame.Sequence)] };
+        var transport = new FakeTransport() { Responder = frame => [Ack(frame.Sequence)] };
         await using var session = await StartSessionAsync(transport, time);
         var send = session.SendAsync(new byte[] { 0x01 }, PatienceToken());
         await transport.WaitForWrittenFramesAsync(1, PatienceToken());
@@ -173,7 +173,7 @@ public class ProtocolSessionAckTests
         // write its frame; the late ACK(1) for the first send (seq 0) follows in the same read, and the trailing
         // DATA_MDR proves it was processed.
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport, time);
         var timedOut = session.SendAsync(new byte[] { 0x01 }, PatienceToken());
         await transport.WaitForWrittenFramesAsync(1, PatienceToken());
@@ -198,7 +198,7 @@ public class ProtocolSessionAckTests
         // is lost. Reads are capped at one ACK frame, so the trailing garbage byte is decoded in a later read and
         // its rejection proves the ACK was handled before B's write completes.
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport(connected: true) { MaxReadChunk = FrameCodec.Encode(Ack(1)).Length };
+        var transport = new FakeTransport() { MaxReadChunk = FrameCodec.Encode(Ack(1)).Length };
         var logger = new RejectionSignallingLogger();
         await using var session = new ProtocolSession(transport, logger, time);
         await session.StartAsync(CancellationToken.None);
@@ -228,7 +228,7 @@ public class ProtocolSessionAckTests
     public async Task WhenAckIsLostThenNextSendStillToggles()
     {
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport, time);
         var lost = session.SendAsync(new byte[] { 0x01 }, PatienceToken());
         await transport.WaitForWrittenFramesAsync(1, PatienceToken());
@@ -245,7 +245,7 @@ public class ProtocolSessionAckTests
     public async Task WhenSendIsCancelledBeforeItsFrameIsWrittenThenSequenceIsNotConsumed()
     {
         // The receive loop's ACK write hangs and holds the write lock, so the send cannot start writing.
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         var hung = transport.HangNextWrite();
         transport.QueueIncoming(Data(1, 0x69));

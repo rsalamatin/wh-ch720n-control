@@ -80,7 +80,7 @@ public sealed class ProtocolSession : IAsyncDisposable
     /// <summary>The receive loop ended because the link dropped or the remote side closed it.</summary>
     public event EventHandler<Exception?>? Disconnected;
 
-    /// <summary>Starts the background receive loop. Call once, after the transport is connected.</summary>
+    /// <summary>Starts the background receive loop. Call once.</summary>
     public Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -90,11 +90,6 @@ public sealed class ProtocolSession : IAsyncDisposable
             if (_started)
             {
                 throw new InvalidOperationException("The session has already been started.");
-            }
-
-            if (!_transport.IsConnected)
-            {
-                throw new InvalidOperationException("The transport must be connected before the session starts.");
             }
 
             _started = true;

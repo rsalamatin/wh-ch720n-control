@@ -20,19 +20,9 @@ public class ProtocolSessionLifecycleTests
     }
 
     [Test]
-    public async Task WhenTransportIsNotConnectedThenStartThrowsInvalidOperationException()
-    {
-        await using var session = new ProtocolSession(new FakeTransport(), NullLogger<ProtocolSession>.Instance);
-
-        var act = () => session.StartAsync(CancellationToken.None);
-
-        await Assert.That(act).Throws<InvalidOperationException>();
-    }
-
-    [Test]
     public async Task WhenStartedTwiceThenInvalidOperationExceptionIsThrown()
     {
-        await using var session = await StartSessionAsync(new FakeTransport(connected: true));
+        await using var session = await StartSessionAsync(new FakeTransport());
 
         var act = () => session.StartAsync(CancellationToken.None);
 
@@ -42,7 +32,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenSendingBeforeStartThenInvalidOperationExceptionIsThrown()
     {
-        await using var session = new ProtocolSession(new FakeTransport(connected: true), NullLogger<ProtocolSession>.Instance);
+        await using var session = new ProtocolSession(new FakeTransport(), NullLogger<ProtocolSession>.Instance);
 
         var act = () => session.SendAsync(new byte[] { 0x00, 0x00 }, CancellationToken.None);
 
@@ -52,7 +42,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenTimeoutIsNotPositiveThenArgumentOutOfRangeExceptionIsThrown()
     {
-        await using var session = await StartSessionAsync(new FakeTransport(connected: true));
+        await using var session = await StartSessionAsync(new FakeTransport());
 
         var act = () => session.SendAsync(new byte[] { 0x00 }, CancellationToken.None, TimeSpan.Zero);
 
@@ -62,7 +52,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenCallerCancelsThenRequestThrowsOperationCanceledException()
     {
-        await using var session = await StartSessionAsync(new FakeTransport(connected: true));
+        await using var session = await StartSessionAsync(new FakeTransport());
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
 
         var act = () => session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, cancellation.Token);
@@ -73,7 +63,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenDeviceClosesLinkDuringRequestThenRequestThrowsTransportException()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         var request = session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
         await transport.WaitForWrittenFramesAsync(1, PatienceToken());
@@ -86,7 +76,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenLinkDropsDuringSendThenSendThrowsTransportException()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         var send = session.SendAsync(new byte[] { 0x00, 0x00 }, PatienceToken());
         await transport.WaitForWrittenFramesAsync(1, PatienceToken());
@@ -99,7 +89,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenDeviceClosesLinkThenDisconnectedIsRaised()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         var disconnected = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
         session.Disconnected += (_, cause) => disconnected.TrySetResult(cause);
@@ -113,7 +103,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenLinkIsDownThenNextCallThrowsTransportExceptionImmediately()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         session.Disconnected += (_, _) => disconnected.TrySetResult();
@@ -128,7 +118,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenWriteFailsThenSendThrowsTransportException()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         transport.FailNextWrite(new TransportException("simulated write failure"));
 
@@ -140,7 +130,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenWriteFailsThenDisconnectedIsRaised()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         var disconnected = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
         session.Disconnected += (_, cause) => disconnected.TrySetResult(cause);
@@ -156,7 +146,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenReceiveFailsUnexpectedlyThenDisconnectedCarriesTheCause()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         var disconnected = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
         session.Disconnected += (_, cause) => disconnected.TrySetResult(cause);
@@ -171,7 +161,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenDisconnectedHandlerDisposesSessionThenDisposeCompletes()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         var session = await StartSessionAsync(transport);
         var disposing = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
         session.Disconnected += (_, _) => disposing.TrySetResult(session.DisposeAsync().AsTask());
@@ -185,7 +175,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenDisconnectedHandlerThrowsThenDisposeDoesNotThrow()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         var session = await StartSessionAsync(transport);
         var raised = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         session.Disconnected += (_, _) => throw new InvalidOperationException("faulty subscriber");
@@ -202,7 +192,7 @@ public class ProtocolSessionLifecycleTests
     public async Task WhenWriteHangsPastTimeoutThenSendThrowsTimeoutException()
     {
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport, time);
         var hung = transport.HangNextWrite();
         var send = session.SendAsync(new byte[] { 0x00, 0x00 }, PatienceToken());
@@ -217,7 +207,7 @@ public class ProtocolSessionLifecycleTests
     public async Task WhenWriteIsInterruptedThenDisconnectedIsRaised()
     {
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport, time);
         var disconnected = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
         session.Disconnected += (_, cause) => disconnected.TrySetResult(cause);
@@ -234,7 +224,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenDisposedDuringHungWriteThenSendThrowsTransportException()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         var session = await StartSessionAsync(transport);
         var hung = transport.HangNextWrite();
         var send = session.SendAsync(new byte[] { 0x00, 0x00 }, PatienceToken());
@@ -248,7 +238,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenDisposedWhileReaderIsBlockedThenDisposeCompletesWithinOneSecond()
     {
-        var session = await StartSessionAsync(new FakeTransport(connected: true));
+        var session = await StartSessionAsync(new FakeTransport());
 
         var dispose = session.DisposeAsync().AsTask();
 
@@ -258,7 +248,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenDisposedWithPendingRequestThenRequestThrowsTransportException()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         var session = await StartSessionAsync(transport);
         var request = session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
         await transport.WaitForWrittenFramesAsync(1, PatienceToken());
@@ -271,7 +261,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenDisposedThenDisconnectedIsNotRaised()
     {
-        var session = await StartSessionAsync(new FakeTransport(connected: true));
+        var session = await StartSessionAsync(new FakeTransport());
         var raised = false;
         session.Disconnected += (_, _) => raised = true;
 
@@ -283,7 +273,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenDisposedThenTransportIsDisposed()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         var session = await StartSessionAsync(transport);
 
         await session.DisposeAsync();
@@ -294,7 +284,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenCalledAfterDisposeThenObjectDisposedExceptionIsThrown()
     {
-        var session = await StartSessionAsync(new FakeTransport(connected: true));
+        var session = await StartSessionAsync(new FakeTransport());
         await session.DisposeAsync();
 
         var act = () => session.SendAsync(new byte[] { 0x00, 0x00 }, CancellationToken.None);
@@ -305,7 +295,7 @@ public class ProtocolSessionLifecycleTests
     [Test]
     public async Task WhenDisposedTwiceThenSecondDisposeDoesNothing()
     {
-        var session = await StartSessionAsync(new FakeTransport(connected: true));
+        var session = await StartSessionAsync(new FakeTransport());
         await session.DisposeAsync();
 
         var act = async () => await session.DisposeAsync();

@@ -8,7 +8,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenBytesAreQueuedThenReceiveReturnsThem()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         transport.QueueIncoming([0x01, 0x02, 0x03]);
         var buffer = new byte[16];
 
@@ -20,7 +20,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenMaxReadChunkIsSetThenReadsNeverExceedIt()
     {
-        var transport = new FakeTransport(connected: true) { MaxReadChunk = 2 };
+        var transport = new FakeTransport() { MaxReadChunk = 2 };
         transport.QueueIncoming([0x01, 0x02, 0x03]);
 
         var read = await transport.ReceiveAsync(new byte[16], CancellationToken.None);
@@ -31,7 +31,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenNoDataIsQueuedThenReceiveWaitsUntilDataArrives()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         var receive = transport.ReceiveAsync(new byte[16], CancellationToken.None);
         await Task.Delay(50);
         var completedEarly = receive.IsCompleted;
@@ -45,7 +45,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenPendingReceiveIsCancelledThenOperationCanceledExceptionIsThrown()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
 
         var act = () => transport.ReceiveAsync(new byte[16], cancellation.Token);
@@ -56,7 +56,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenEofIsSimulatedThenReceiveReturnsZeroAfterQueuedBytes()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         transport.QueueIncoming([0x01]);
         transport.SimulateEof();
         await transport.ReceiveAsync(new byte[16], CancellationToken.None);
@@ -69,7 +69,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenDisconnectedThenPendingReceiveThrowsTransportException()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         var receive = transport.ReceiveAsync(new byte[16], CancellationToken.None);
 
         transport.SimulateDisconnect();
@@ -78,9 +78,10 @@ public class FakeTransportTests
     }
 
     [Test]
-    public async Task WhenNotConnectedThenSendThrowsTransportException()
+    public async Task WhenLinkDroppedThenSendThrowsTransportException()
     {
         var transport = new FakeTransport();
+        transport.SimulateDisconnect();
 
         var act = () => transport.SendAsync(new byte[] { 0x01 }, CancellationToken.None);
 
@@ -88,20 +89,9 @@ public class FakeTransportTests
     }
 
     [Test]
-    public async Task WhenConnectFailureIsSetThenConnectThrowsIt()
-    {
-        var failure = new TransportException("simulated");
-        var transport = new FakeTransport { ConnectFailure = failure };
-
-        var act = () => transport.ConnectAsync(CancellationToken.None);
-
-        await Assert.That(act).Throws<TransportException>();
-    }
-
-    [Test]
     public async Task WhenFrameIsWrittenThenWrittenFramesContainsItDecoded()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
 
         await transport.SendAsync(FrameCodec.Encode(new Frame(FrameType.DataMdr, 1, new byte[] { 0x22, 0x00 })), CancellationToken.None);
 
@@ -111,7 +101,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenAutoAckIsOnThenWrittenDataFrameIsAnsweredWithAck()
     {
-        var transport = new FakeTransport(connected: true) { AutoAck = true };
+        var transport = new FakeTransport() { AutoAck = true };
         await transport.SendAsync(FrameCodec.Encode(new Frame(FrameType.DataMdr, 0, new byte[] { 0x00 })), CancellationToken.None);
         var buffer = new byte[64];
 
@@ -123,7 +113,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenHungWriteIsReleasedThenItIsRecorded()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         var hung = transport.HangNextWrite();
         var send = transport.SendAsync(new byte[] { 0x01 }, CancellationToken.None);
         await hung.WaitAsync(TimeSpan.FromSeconds(5));
@@ -137,7 +127,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenHungWriteIsCancelledThenOperationCanceledExceptionIsThrown()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         var hung = transport.HangNextWrite();
         using var cancellation = new CancellationTokenSource();
         var send = transport.SendAsync(new byte[] { 0x01 }, cancellation.Token);
@@ -151,7 +141,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenReceiveFailureIsSetThenPendingReceiveThrowsIt()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         var receive = transport.ReceiveAsync(new byte[16], CancellationToken.None);
 
         transport.FailReceive(new InvalidOperationException("simulated"));
@@ -162,7 +152,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenNextWriteIsFailedThenThatWriteIsNotRecorded()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         transport.FailNextWrite(new TransportException("simulated"));
         await Assert.That(() => transport.SendAsync(new byte[] { 0x01 }, CancellationToken.None)).Throws<TransportException>();
 

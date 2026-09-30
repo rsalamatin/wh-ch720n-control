@@ -40,10 +40,10 @@ internal sealed class FakeHeadset
         [0x12] = [0x13, 0x02, 0x02],
     };
 
-    public async Task<TransportConnection> ConnectAsync(CancellationToken cancellationToken)
+    public Task<TransportConnection> ConnectAsync(CancellationToken cancellationToken)
     {
-        await Transport.ConnectAsync(cancellationToken);
-        return new TransportConnection(Transport, ServiceGeneration);
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new TransportConnection(Transport, ServiceGeneration));
     }
 
     public IReadOnlyList<byte[]> SentPayloads() =>

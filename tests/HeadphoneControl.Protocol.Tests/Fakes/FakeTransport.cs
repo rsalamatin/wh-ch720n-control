@@ -24,30 +24,15 @@ public sealed class FakeTransport : ITransport
 
     private TaskCompletionSource _incomingChanged = NewSignal();
     private TaskCompletionSource _writtenChanged = NewSignal();
-    private bool _connected;
+
+    // Connected from the start, like every transport a connector hands out.
+    private bool _connected = true;
     private bool _eof;
     private bool _disposed;
     private Exception? _nextWriteFailure;
     private Exception? _receiveFailure;
     private TaskCompletionSource? _hangNextWrite;
     private TaskCompletionSource? _releaseHungWrite;
-
-    /// <summary>Creates a fake that is not yet connected; call <see cref="ConnectAsync"/> or pass <c>connected: true</c>.</summary>
-    public FakeTransport(bool connected = false)
-    {
-        _connected = connected;
-    }
-
-    public bool IsConnected
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _connected;
-            }
-        }
-    }
 
     public bool IsDisposed
     {
@@ -59,9 +44,6 @@ public sealed class FakeTransport : ITransport
             }
         }
     }
-
-    /// <summary>When set, the next <see cref="ConnectAsync"/> throws this instead of connecting.</summary>
-    public TransportException? ConnectFailure { get; set; }
 
     /// <summary>Upper bound on the bytes returned by one <see cref="ReceiveAsync"/> call (simulates fragmentation).</summary>
     public int? MaxReadChunk { get; set; }
@@ -108,24 +90,6 @@ public sealed class FakeTransport : ITransport
                 return _incoming.Count;
             }
         }
-    }
-
-    public Task ConnectAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        lock (_gate)
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            if (ConnectFailure is { } failure)
-            {
-                throw failure;
-            }
-
-            _connected = true;
-            _eof = false;
-        }
-
-        return Task.CompletedTask;
     }
 
     public async Task SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)

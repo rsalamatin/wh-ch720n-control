@@ -12,7 +12,7 @@ public class ProtocolSessionRequestTests
     public async Task WhenRealDeviceAnswersInitHandshakeThenRequestReturnsInitReply()
     {
         // Replay the exact bytes a real WH-CH720N sent, including its retransmission.
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         transport.Responder = _ =>
         {
             transport.QueueIncoming(Convert.FromHexString(
@@ -29,7 +29,7 @@ public class ProtocolSessionRequestTests
     [Test]
     public async Task WhenResponseMatchesOpcodeThenRequestReturnsItsPayload()
     {
-        var transport = new FakeTransport(connected: true) { Responder = _ => [Ack(1), Data(0, 0x23, 0x00, 0x64, 0x00)] };
+        var transport = new FakeTransport() { Responder = _ => [Ack(1), Data(0, 0x23, 0x00, 0x64, 0x00)] };
         await using var session = await StartSessionAsync(transport);
 
         var reply = await session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
@@ -40,7 +40,7 @@ public class ProtocolSessionRequestTests
     [Test]
     public async Task WhenFirstResponseHasWrongSubtypeThenRequestReturnsTheMatchingOne()
     {
-        var transport = new FakeTransport(connected: true)
+        var transport = new FakeTransport()
         {
             Responder = _ => [Ack(1), Data(0, 0x23, 0x01, 0x50, 0x00), Data(1, 0x23, 0x00, 0x64, 0x00)],
         };
@@ -54,7 +54,7 @@ public class ProtocolSessionRequestTests
     [Test]
     public async Task WhenUnrelatedFrameArrivesDuringRequestThenItIsRaisedAsNotification()
     {
-        var transport = new FakeTransport(connected: true)
+        var transport = new FakeTransport()
         {
             Responder = _ => [Ack(1), Data(0, 0x69, 0x17, 0x01), Data(1, 0x23, 0x00, 0x64, 0x00)],
         };
@@ -69,7 +69,7 @@ public class ProtocolSessionRequestTests
     [Test]
     public async Task WhenNotificationArrivesBetweenAckAndResponseThenRequestReturnsTheResponse()
     {
-        var transport = new FakeTransport(connected: true)
+        var transport = new FakeTransport()
         {
             Responder = _ => [Ack(1), Data(0, 0x69, 0x17, 0x01), Data(1, 0x23, 0x00, 0x64, 0x00)],
         };
@@ -84,7 +84,7 @@ public class ProtocolSessionRequestTests
     public async Task WhenOnlyUnrelatedFramesArriveThenRequestThrowsTimeoutException()
     {
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport(connected: true) { Responder = _ => [Ack(1), Data(0, 0x69, 0x17, 0x01)] };
+        var transport = new FakeTransport() { Responder = _ => [Ack(1), Data(0, 0x69, 0x17, 0x01)] };
         await using var session = await StartSessionAsync(transport, time);
         var notified = NextNotificationAsync(session);
         var request = session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
@@ -98,7 +98,7 @@ public class ProtocolSessionRequestTests
     [Test]
     public async Task WhenMatchingFrameArrivedBeforeTheRequestThenRequestWaitsForAFreshReply()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         var notified = NextNotificationAsync(session);
         transport.QueueIncoming(Data(0, 0x23, 0x00, 0x55, 0x00));
@@ -114,7 +114,7 @@ public class ProtocolSessionRequestTests
     public async Task WhenLateReplyToTimedOutRequestArrivesThenNextRequestDoesNotReturnIt()
     {
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport, time);
         var timedOut = session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
         await transport.WaitForWrittenFramesAsync(1, PatienceToken());
@@ -134,7 +134,7 @@ public class ProtocolSessionRequestTests
     public async Task WhenRequestTimedOutThenNextRequestStillSucceeds()
     {
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport, time);
         var timedOut = session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
         await transport.WaitForWrittenFramesAsync(1, PatienceToken());
@@ -150,7 +150,7 @@ public class ProtocolSessionRequestTests
     [Test]
     public async Task WhenNotificationHandlerThrowsThenLaterNotificationsAreStillRaised()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         session.NotificationReceived += (_, _) => throw new InvalidOperationException("faulty subscriber");
         var second = NextNotificationAsync(session, frame => frame.Payload.Span[0] == 0x02);
@@ -164,7 +164,7 @@ public class ProtocolSessionRequestTests
     [Test]
     public async Task WhenNotificationHandlerThrewThenDisposeDoesNotThrow()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         var session = await StartSessionAsync(transport);
         session.NotificationReceived += (_, _) => throw new InvalidOperationException("faulty subscriber");
         var raised = NextNotificationAsync(session);
@@ -179,7 +179,7 @@ public class ProtocolSessionRequestTests
     [Test]
     public async Task WhenIncomingBytesAreFragmentedThenRequestStillCompletes()
     {
-        var transport = new FakeTransport(connected: true)
+        var transport = new FakeTransport()
         {
             MaxReadChunk = 1,
             Responder = _ => [Ack(1), Data(0, 0x23, 0x00, 0x3E, 0x00)],
@@ -194,7 +194,7 @@ public class ProtocolSessionRequestTests
     [Test]
     public async Task WhenCorruptFramePrecedesResponseThenRequestStillCompletes()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         transport.Responder = _ =>
         {
             transport.QueueIncoming(Convert.FromHexString("FF3E0C00000000022200313C"));
@@ -212,7 +212,7 @@ public class ProtocolSessionRequestTests
     {
         // Each request is answered at once, so without serialization both requests would be written first.
         var deviceSequence = (byte)0;
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         transport.Responder = frame =>
         {
             if (frame.Type != FrameType.DataMdr)
@@ -237,7 +237,7 @@ public class ProtocolSessionRequestTests
     [Test]
     public async Task WhenNotificationHandlerSendsRequestThenItCompletes()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         var handlerReply = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         session.NotificationReceived += (_, _) =>
@@ -258,7 +258,7 @@ public class ProtocolSessionRequestTests
     [Test]
     public async Task WhenSeveralNotificationsArriveThenTheyAreRaisedInOrder()
     {
-        var transport = new FakeTransport(connected: true);
+        var transport = new FakeTransport();
         await using var session = await StartSessionAsync(transport);
         var payloads = new List<string>();
         session.NotificationReceived += (_, frame) => payloads.Add(Hex(frame.Payload));
