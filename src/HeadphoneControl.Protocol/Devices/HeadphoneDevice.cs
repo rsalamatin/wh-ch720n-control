@@ -1,13 +1,10 @@
-using HeadphoneControl.Protocol.Commands;
-using HeadphoneControl.Protocol.Framing;
-using HeadphoneControl.Protocol.Session;
 using HeadphoneControl.Protocol.Transport;
 using Microsoft.Extensions.Logging;
 
 namespace HeadphoneControl.Protocol.Devices;
 
 /// <summary>
-/// The real headset: composes a transport, a <see cref="ProtocolSession"/> and the <see cref="V2CommandSet"/>.
+/// The real headset: opens a <see cref="SonyV2Connection"/> on every connect and keeps the <see cref="DeviceState"/>.
 /// No V2 command is sent until both the transport's service and the init handshake confirm a V2 device.
 /// </summary>
 public sealed class HeadphoneDevice : IHeadphoneDevice
@@ -22,12 +19,9 @@ public sealed class HeadphoneDevice : IHeadphoneDevice
 
     private DeviceState _state = DeviceState.Disconnected;
 
-    // Written only under _operationLock. The session event handlers read them without it, which is safe because
-    // ProtocolSession.DisposeAsync waits for its dispatch task before a released session's fields are replaced.
-    private ProtocolSession? _session;
-    private V2CommandSet? _commands;
-    // Guarded by _stateLock, so a link loss is atomic with ConnectAsync's final publish.
-    private bool _linkLost;
+    // Written only under _operationLock. The connection event handlers read it without the lock, which is safe
+    // because SonyV2Connection.DisposeAsync waits for its last event before a released connection is replaced.
+    private SonyV2Connection? _connection;
     private bool _disposed;
 
     /// <param name="connect">
@@ -69,30 +63,32 @@ public sealed class HeadphoneDevice : IHeadphoneDevice
         RunAsync(
             async ct =>
             {
-                if (_session is not null && State.Connection == ConnectionStatus.Connected)
+                if (_connection is not null && State.Connection == ConnectionStatus.Connected)
                 {
                     return;
                 }
 
-                await ReleaseSessionAsync().ConfigureAwait(false);
+                await ReleaseConnectionAsync().ConfigureAwait(false);
                 Publish(_ => DeviceState.Disconnected with { Connection = ConnectionStatus.Connecting });
                 try
                 {
-                    await OpenSessionAsync(ct).ConfigureAwait(false);
-                    var read = await ReadAllAsync(ct).ConfigureAwait(false);
+                    var connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
+                    var settings = await connection.ReadAllAsync(ct).ConfigureAwait(false);
 
                     // Connected and the settings are published together, so the UI never sees "connected, all unknown".
-                    // A link that drops after the last reply either stops this publish or finds Connected and clears it.
+                    // The connection latches IsLinkLost before raising LinkLost, whose handler publishes under the same
+                    // lock: a link that drops after the last reply either stops this publish or finds Connected and
+                    // clears it.
                     var lost = false;
                     Publish(current =>
                     {
-                        if (_linkLost)
+                        if (connection.IsLinkLost)
                         {
                             lost = true;
                             return current;
                         }
 
-                        return read(current) with
+                        return settings.ApplyTo(current) with
                         {
                             Connection = ConnectionStatus.Connected,
                             Generation = ProtocolGeneration.V2,
@@ -111,7 +107,7 @@ public sealed class HeadphoneDevice : IHeadphoneDevice
                         _logger.LogError(ex, "Connecting to {Name} failed", Name);
                     }
 
-                    await ReleaseSessionAsync().ConfigureAwait(false);
+                    await ReleaseConnectionAsync().ConfigureAwait(false);
                     Publish(_ => cancelled
                         ? DeviceState.Disconnected
                         : DeviceState.Disconnected with { Connection = ConnectionStatus.Failed });
@@ -124,17 +120,17 @@ public sealed class HeadphoneDevice : IHeadphoneDevice
         RunAsync(
             async _ =>
             {
-                await ReleaseSessionAsync().ConfigureAwait(false);
+                await ReleaseConnectionAsync().ConfigureAwait(false);
                 Publish(_ => DeviceState.Disconnected);
             },
             cancellationToken);
 
     public Task RefreshAsync(CancellationToken cancellationToken) =>
         RunConnectedAsync(
-            async (_, _, ct) =>
+            async (connection, ct) =>
             {
-                var read = await ReadAllAsync(ct).ConfigureAwait(false);
-                PublishIfConnected(read);
+                var settings = await connection.ReadAllAsync(ct).ConfigureAwait(false);
+                PublishIfConnected(settings.ApplyTo);
             },
             cancellationToken);
 
@@ -142,25 +138,23 @@ public sealed class HeadphoneDevice : IHeadphoneDevice
     {
         ArgumentNullException.ThrowIfNull(state);
         return SendSettingAsync(
-            commands => commands.SetNoiseControl(state),
+            (connection, ct) => connection.SetNoiseControlAsync(state, ct),
             current => current with { NoiseControl = NormalizeNoiseControl(state) },
             cancellationToken);
     }
 
     public Task SetEqualizerPresetAsync(EqualizerPreset preset, CancellationToken cancellationToken) =>
         RunConnectedAsync(
-            async (session, commands, ct) =>
+            async (connection, ct) =>
             {
-                await session.SendAsync(commands.SetEqualizerPreset(preset).Payload, ct).ConfigureAwait(false);
+                await connection.SetEqualizerPresetAsync(preset, ct).ConfigureAwait(false);
 
                 // Captured after the ACK: anything applied from here on describes the device after the SET.
                 var previous = State.Equalizer;
 
                 // The device owns each preset's band curve, so it is re-read. Once the SET is ACKed the caller's
                 // cancellation no longer applies: abandoning the re-read would leave the old preset's bands showing.
-                var equalizer = await TryQueryAsync(
-                        session, commands.QueryEqualizer(), commands.ParseEqualizer, _lifetime.Token)
-                    .ConfigureAwait(false);
+                var equalizer = await connection.TryReadEqualizerAsync(_lifetime.Token).ConfigureAwait(false);
                 if (equalizer is not null)
                 {
                     PublishIfConnected(current => current with { Equalizer = equalizer });
@@ -181,14 +175,14 @@ public sealed class HeadphoneDevice : IHeadphoneDevice
         ArgumentNullException.ThrowIfNull(bands);
         var snapshot = bands.ToArray();
         return SendSettingAsync(
-            commands => commands.SetEqualizerCustom(clearBass, snapshot),
+            (connection, ct) => connection.SetCustomEqualizerAsync(clearBass, snapshot, ct),
             current => current with { Equalizer = new EqualizerState(EqualizerPreset.Manual, clearBass, snapshot) },
             cancellationToken);
     }
 
     public Task SetDseeAsync(bool enabled, CancellationToken cancellationToken) =>
         SendSettingAsync(
-            commands => commands.SetDsee(enabled),
+            (connection, ct) => connection.SetDseeAsync(enabled, ct),
             current => current with { DseeEnabled = enabled },
             cancellationToken);
 
@@ -205,7 +199,7 @@ public sealed class HeadphoneDevice : IHeadphoneDevice
             }
 
             _disposed = true;
-            await ReleaseSessionAsync().ConfigureAwait(false);
+            await ReleaseConnectionAsync().ConfigureAwait(false);
             Publish(_ => DeviceState.Disconnected);
         }
         finally
@@ -225,119 +219,43 @@ public sealed class HeadphoneDevice : IHeadphoneDevice
         ex is IOException or TimeoutException or NotSupportedException or FormatException
             or InvalidOperationException or ArgumentException;
 
-    private async Task OpenSessionAsync(CancellationToken cancellationToken)
+    // Caller holds _operationLock.
+    private async Task<SonyV2Connection> OpenConnectionAsync(CancellationToken cancellationToken)
     {
-        lock (_stateLock)
-        {
-            _linkLost = false;
-        }
-
-        var connection = await _connect(cancellationToken).ConfigureAwait(false);
-        var session = new ProtocolSession(
-            connection.Transport, _loggerFactory.CreateLogger<ProtocolSession>(), _timeProvider);
-        _session = session;
-        session.NotificationReceived += OnNotificationReceived;
-        session.Disconnected += OnSessionDisconnected;
-        await session.StartAsync(cancellationToken).ConfigureAwait(false);
-
-        // The init opcode 0x00 is harmless on every generation, so it is the only thing sent before the check.
-        var handshake = ProtocolHandshake.CreateRequest();
-        var reply = await session.RequestAsync(
-            handshake.Payload, handshake.ResponseOpcode!.Value, handshake.ResponseSubtype, cancellationToken)
+        var transport = await _connect(cancellationToken).ConfigureAwait(false);
+        var connection = await SonyV2Connection.OpenAsync(transport, _loggerFactory, _timeProvider, cancellationToken)
             .ConfigureAwait(false);
-
-        _commands = V2CommandSet.FromHandshake(connection.ServiceGeneration, reply.Span);
+        _connection = connection;
+        connection.NotificationReceived += OnNotificationReceived;
+        connection.LinkLost += OnLinkLost;
         _logger.LogInformation("{Name} confirmed as a V2 device (service and handshake)", Name);
-    }
-
-    private async Task<Func<DeviceState, DeviceState>> ReadAllAsync(CancellationToken cancellationToken)
-    {
-        var session = _session!;
-        var commands = _commands!;
-
-        var battery = await TryQueryAsync(session, commands.QueryBattery(), commands.ParseBattery, cancellationToken)
-            .ConfigureAwait(false);
-        var noise = await TryQueryAsync(session, commands.QueryNoiseControl(), commands.ParseNoiseControl, cancellationToken)
-            .ConfigureAwait(false);
-        var equalizer = await TryQueryAsync(session, commands.QueryEqualizer(), commands.ParseEqualizer, cancellationToken)
-            .ConfigureAwait(false);
-        var dsee = await TryQueryValueAsync(session, commands.QueryDsee(), commands.ParseDsee, cancellationToken)
-            .ConfigureAwait(false);
-        var firmware = await TryQueryAsync(session, commands.QueryFirmwareVersion(), commands.ParseFirmwareVersion, cancellationToken)
-            .ConfigureAwait(false);
-        var codec = await TryQueryValueAsync(session, commands.QueryCodec(), commands.ParseCodec, cancellationToken)
-            .ConfigureAwait(false);
-
-        // Unanswered queries keep what the state already has, e.g. a value a notification delivered meanwhile.
-        return current => current with
-        {
-            Battery = battery ?? current.Battery,
-            NoiseControl = noise ?? current.NoiseControl,
-            Equalizer = equalizer ?? current.Equalizer,
-            DseeEnabled = dsee ?? current.DseeEnabled,
-            FirmwareVersion = firmware ?? current.FirmwareVersion,
-            Codec = codec ?? current.Codec,
-        };
-    }
-
-    private async Task<T?> TryQueryAsync<T>(
-        ProtocolSession session, MdrRequest request, SpanParser<T> parse, CancellationToken cancellationToken)
-        where T : class =>
-        await TryQueryCoreAsync(session, request, parse, cancellationToken).ConfigureAwait(false) is (true, var value)
-            ? value
-            : null;
-
-    private async Task<T?> TryQueryValueAsync<T>(
-        ProtocolSession session, MdrRequest request, SpanParser<T> parse, CancellationToken cancellationToken)
-        where T : struct =>
-        await TryQueryCoreAsync(session, request, parse, cancellationToken).ConfigureAwait(false) is (true, var value)
-            ? value
-            : null;
-
-    // A single unanswered or malformed query must not fail the whole connection: the feature stays unknown
-    // (null) and the UI disables it. Link loss still propagates.
-    private async Task<(bool Found, T Value)> TryQueryCoreAsync<T>(
-        ProtocolSession session, MdrRequest request, SpanParser<T> parse, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var reply = await session.RequestAsync(
-                request.Payload, request.ResponseOpcode!.Value, request.ResponseSubtype, cancellationToken)
-                .ConfigureAwait(false);
-            return (true, parse(reply.Span));
-        }
-        catch (Exception ex) when (ex is TimeoutException or FormatException)
-        {
-            _logger.LogWarning(ex, "Query {Payload} failed; the setting stays unknown", Convert.ToHexString(request.Payload.Span));
-            return (false, default!);
-        }
+        return connection;
     }
 
     private Task SendSettingAsync(
-        Func<V2CommandSet, MdrRequest> build,
+        Func<SonyV2Connection, CancellationToken, Task> send,
         Func<DeviceState, DeviceState> apply,
         CancellationToken cancellationToken) =>
         RunConnectedAsync(
-            async (session, commands, ct) =>
+            async (connection, ct) =>
             {
-                await session.SendAsync(build(commands).Payload, ct).ConfigureAwait(false);
+                await send(connection, ct).ConfigureAwait(false);
                 PublishIfConnected(apply);
             },
             cancellationToken);
 
     private Task RunConnectedAsync(
-        Func<ProtocolSession, V2CommandSet, CancellationToken, Task> operation,
+        Func<SonyV2Connection, CancellationToken, Task> operation,
         CancellationToken cancellationToken) =>
         RunAsync(
             ct =>
             {
-                if (_session is not { } session || _commands is not { } commands
-                    || State.Connection != ConnectionStatus.Connected)
+                if (_connection is not { } connection || State.Connection != ConnectionStatus.Connected)
                 {
                     throw new InvalidOperationException($"{Name} is not connected.");
                 }
 
-                return operation(session, commands, ct);
+                return operation(connection, ct);
             },
             cancellationToken);
 
@@ -377,10 +295,9 @@ public sealed class HeadphoneDevice : IHeadphoneDevice
         }
     }
 
-    private void OnNotificationReceived(object? sender, Frame frame)
+    private void OnNotificationReceived(object? sender, ReadOnlyMemory<byte> payload)
     {
-        var commands = _commands;
-        if (commands is null || !ReferenceEquals(sender, _session))
+        if (sender is not SonyV2Connection connection || !ReferenceEquals(connection, _connection))
         {
             return;
         }
@@ -391,7 +308,7 @@ public sealed class HeadphoneDevice : IHeadphoneDevice
             bool recognised;
             lock (_stateLock)
             {
-                recognised = commands.TryApplyNotification(_state, frame.Payload.Span, out var next);
+                recognised = connection.TryApplyNotification(_state, payload.Span, out var next);
                 if (recognised && next != _state)
                 {
                     _state = next;
@@ -408,46 +325,41 @@ public sealed class HeadphoneDevice : IHeadphoneDevice
                 // The headset echoes every SET as a notification, which usually matches the state the ACK set.
                 _logger.LogDebug(
                     recognised ? "Notification {Payload} confirms the current state" : "Ignored notification {Payload}",
-                    Convert.ToHexString(frame.Payload.Span));
+                    Convert.ToHexString(payload.Span));
             }
         }
         catch (FormatException ex)
         {
-            _logger.LogWarning(ex, "Malformed notification {Payload}", Convert.ToHexString(frame.Payload.Span));
+            _logger.LogWarning(ex, "Malformed notification {Payload}", Convert.ToHexString(payload.Span));
         }
     }
 
-    private void OnSessionDisconnected(object? sender, Exception? cause)
+    private void OnLinkLost(object? sender, Exception? cause)
     {
-        if (!ReferenceEquals(sender, _session))
+        if (!ReferenceEquals(sender, _connection))
         {
             return;
         }
 
         _logger.LogWarning(cause, "Link to {Name} lost", Name);
 
-        // While connecting, ConnectAsync sees _linkLost and reports Failed itself.
-        Publish(current =>
-        {
-            _linkLost = true;
-            return current.Connection == ConnectionStatus.Connected ? DeviceState.Disconnected : current;
-        });
+        // While connecting, ConnectAsync sees IsLinkLost and reports Failed itself.
+        PublishIfConnected(_ => DeviceState.Disconnected);
     }
 
     // Caller holds _operationLock.
-    private async Task ReleaseSessionAsync()
+    private async Task ReleaseConnectionAsync()
     {
-        var session = _session;
-        _session = null;
-        _commands = null;
-        if (session is null)
+        var connection = _connection;
+        _connection = null;
+        if (connection is null)
         {
             return;
         }
 
-        session.NotificationReceived -= OnNotificationReceived;
-        session.Disconnected -= OnSessionDisconnected;
-        await session.DisposeAsync().ConfigureAwait(false);
+        connection.NotificationReceived -= OnNotificationReceived;
+        connection.LinkLost -= OnLinkLost;
+        await connection.DisposeAsync().ConfigureAwait(false);
     }
 
     // A reply or ACK that completes after the link dropped must not resurrect a disconnected state.
@@ -470,6 +382,4 @@ public sealed class HeadphoneDevice : IHeadphoneDevice
 
         StateChanged?.Invoke(this, updated);
     }
-
-    private delegate T SpanParser<out T>(ReadOnlySpan<byte> payload);
 }
