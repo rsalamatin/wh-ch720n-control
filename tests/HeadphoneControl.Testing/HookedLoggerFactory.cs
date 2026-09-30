@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Logging;
 
-namespace HeadphoneControl.Protocol.Tests.Devices;
+namespace HeadphoneControl.Testing;
 
 // Runs OnLog synchronously on the logging thread, so a test can act at a precise point inside an operation.
-internal sealed class HookedLoggerFactory : ILoggerFactory
+public sealed class HookedLoggerFactory : ILoggerFactory
 {
     public Action<string>? OnLog { get; set; }
 

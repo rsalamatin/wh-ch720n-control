@@ -1,12 +1,11 @@
 using HeadphoneControl.Protocol.Devices;
 using HeadphoneControl.Protocol.Framing;
-using HeadphoneControl.Protocol.Tests.Fakes;
 using HeadphoneControl.Protocol.Transport;
 
-namespace HeadphoneControl.Protocol.Tests.Devices;
+namespace HeadphoneControl.Testing;
 
 // Scripted WH-CH720N over FakeTransport: ACKs every frame and answers queries from a reply table.
-internal sealed class FakeHeadset
+public sealed class FakeHeadset
 {
     // Real WH-CH720N reply to the init handshake.
     public static readonly byte[] V2InitReply = [0x01, 0x00, 0x03, 0x00, 0x10, 0x02, 0x00, 0x00];

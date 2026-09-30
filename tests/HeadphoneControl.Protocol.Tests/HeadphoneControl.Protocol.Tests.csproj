@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\HeadphoneControl.Protocol\HeadphoneControl.Protocol.csproj" />
+    <ProjectReference Include="..\HeadphoneControl.Testing\HeadphoneControl.Testing.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,6 +1,6 @@
 using HeadphoneControl.Protocol.Framing;
 using HeadphoneControl.Protocol.Session;
-using HeadphoneControl.Protocol.Tests.Fakes;
+using HeadphoneControl.Testing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using static HeadphoneControl.Protocol.Tests.Session.SessionTestHelpers;

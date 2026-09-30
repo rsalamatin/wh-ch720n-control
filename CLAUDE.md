@@ -12,11 +12,14 @@ The solution is `HeadphoneControl.sln`:
   - framing;
   - session (ACK/sequence, request matching, notifications);
   - V2 commands;
-  - `HeadphoneDevice`;
-  - the device state contracts.
-- **`src/HeadphoneControl.Core`:** platform-neutral `net10.0`. The platform seam `IHeadsetConnector` (list paired headsets, connect to one), `DiscoveredHeadset`, `SonyServiceIds`, and `HeadsetSelection` (display order, connect to the preferred headset).
+  - `SonyV2Connection` (one confirmed V2 link);
+  - the device state contracts (`IHeadphoneDevice`, `DeviceState`) and the `ITransport` byte stream.
+- **`src/HeadphoneControl.Core`:** platform-neutral `net10.0`:
+  - `HeadsetController`, the real `IHeadphoneDevice`: the connection lifecycle, run as a `Channel` actor;
+  - the platform seam `IHeadsetConnector` (list paired headsets, connect to one), `DiscoveredHeadset`, `SonyServiceIds`;
+  - `HeadsetSelection` (display order, connect to the preferred headset).
 - **`src/HeadphoneControl.Platform.Windows`:** the Windows `IHeadsetConnector` (`RfcommConnector`), with WinRT discovery, `RfcommTransport` and the HRESULT error mapping. Everything but `RfcommConnector` is internal.
-- **Tests:** TUnit projects `tests/HeadphoneControl.Protocol.Tests`, `tests/HeadphoneControl.Core.Tests`, `tests/HeadphoneControl.Platform.Windows.Tests` and `tests/HeadphoneControl.Tests`. The `[Explicit]` hardware tests (`RfcommHardwareTests` in Platform.Windows.Tests, `HeadphoneDeviceHardwareTests` in HeadphoneControl.Tests) need the paired headset.
+- **Tests:** TUnit projects `tests/HeadphoneControl.Protocol.Tests`, `tests/HeadphoneControl.Core.Tests`, `tests/HeadphoneControl.Platform.Windows.Tests` and `tests/HeadphoneControl.Tests`. The shared fakes (`FakeTransport`, `FakeHeadset`, `HookedLoggerFactory`) live in the class library `tests/HeadphoneControl.Testing`. The `[Explicit]` hardware tests (`RfcommHardwareTests` in Platform.Windows.Tests, `HeadphoneDeviceHardwareTests` in HeadphoneControl.Tests) need the paired headset.
 - **Refactor in progress:** `docs/architecture-refactor-plan.md`.
 
 Build output goes to `artifacts/` (`UseArtifactsOutput`). When several agents build at the same time, each passes `-p:Lane=<name>` so it builds into `artifacts/lanes/<name>` and doesn't lock another agent's files. Lane folders are disposable.
@@ -81,6 +84,6 @@ The code and `docs/development-status.md` are the source of truth. Key points:
 - **Tests:**
   - Put them in a `[ProjectName].Tests` project using TUnit + NSubstitute. Name tests by behavior (`WhenXThenY`), use AAA, and check one behavior per test.
   - Test through public APIs.
-  - Mock only external dependencies. For Bluetooth, use `FakeTransport` or `FakeHeadset` from the protocol tests.
+  - Mock only external dependencies. For Bluetooth, use `FakeTransport` or `FakeHeadset` from `tests/HeadphoneControl.Testing`.
 - **Project settings:** don't change the TFM, SDK or `LangVersion` unless asked.
 - **Comments:** by default, write none. Keep why-comments, protocol/hardware facts, safety notes, and XML docs on contract types that say more than the signature. The keep/delete lists are in the `code-comments` skill (`.claude/skills/code-comments/SKILL.md`).

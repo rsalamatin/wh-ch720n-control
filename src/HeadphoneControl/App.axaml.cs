@@ -84,7 +84,7 @@ public partial class App : Application
         }
 
         IHeadsetConnector connector = new RfcommConnector(loggerFactory);
-        return new HeadphoneDevice(HeadsetModel, connector.ConnectPreferredAsync, loggerFactory);
+        return new HeadsetController(HeadsetModel, connector.ConnectPreferredAsync, loggerFactory);
     }
 
     private static void HookUnhandledExceptions(ILogger logger, JournalLoggerProvider logProvider)

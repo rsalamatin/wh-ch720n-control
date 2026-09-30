@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HeadphoneControl.Core.Tests
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HeadphoneControl.Platform.Windows.Tests", "tests\HeadphoneControl.Platform.Windows.Tests\HeadphoneControl.Platform.Windows.Tests.csproj", "{DFDADB54-9ADA-4191-B185-26387AED30D7}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HeadphoneControl.Testing", "tests\HeadphoneControl.Testing\HeadphoneControl.Testing.csproj", "{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -129,6 +131,18 @@ Global
 		{DFDADB54-9ADA-4191-B185-26387AED30D7}.Release|x64.Build.0 = Release|Any CPU
 		{DFDADB54-9ADA-4191-B185-26387AED30D7}.Release|x86.ActiveCfg = Release|Any CPU
 		{DFDADB54-9ADA-4191-B185-26387AED30D7}.Release|x86.Build.0 = Release|Any CPU
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}.Debug|x64.Build.0 = Debug|Any CPU
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}.Debug|x86.Build.0 = Debug|Any CPU
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}.Release|x64.ActiveCfg = Release|Any CPU
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}.Release|x64.Build.0 = Release|Any CPU
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}.Release|x86.ActiveCfg = Release|Any CPU
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -142,5 +156,6 @@ Global
 		{4BAACAD5-F74B-4A76-AE6E-461407A9727D} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{E0EC69E4-8E8A-4EC0-8A68-7DFD471780B8} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{DFDADB54-9ADA-4191-B185-26387AED30D7} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{841A5BE3-12AF-4AC2-A71A-B661D9F38B7F} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

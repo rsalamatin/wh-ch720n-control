@@ -49,12 +49,13 @@ dotnet run --project src/HeadphoneControl -- --verbose    # also log every proto
 ```
 src/
   HeadphoneControl/                    Avalonia app (net10.0-windows): views, view models, simulator, composition root
-  HeadphoneControl.Protocol/           platform-neutral (net10.0): framing, session, V2 commands, HeadphoneDevice
-  HeadphoneControl.Core/               platform-neutral (net10.0): IHeadsetConnector seam, headset selection
+  HeadphoneControl.Protocol/           platform-neutral (net10.0): framing, session, V2 commands, SonyV2Connection
+  HeadphoneControl.Core/               platform-neutral (net10.0): HeadsetController, IHeadsetConnector seam, headset selection
   HeadphoneControl.Platform.Windows/   WinRT RFCOMM discovery, transport and connector
 tests/
-  HeadphoneControl.Protocol.Tests/          protocol, session and device tests (FakeTransport / FakeHeadset)
-  HeadphoneControl.Core.Tests/              headset selection and service ids
+  HeadphoneControl.Testing/                 shared fakes: FakeTransport, FakeHeadset (class library, not a test project)
+  HeadphoneControl.Protocol.Tests/          protocol, session and connection tests
+  HeadphoneControl.Core.Tests/              HeadsetController, headset selection and service ids
   HeadphoneControl.Platform.Windows.Tests/  RFCOMM transport and error mapping; [Explicit] RFCOMM hardware tests
   HeadphoneControl.Tests/                   view model, simulator, diagnostics; [Explicit] end-to-end hardware test
 docs/

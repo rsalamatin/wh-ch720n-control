@@ -1,7 +1,7 @@
 using HeadphoneControl.Protocol.Framing;
 using HeadphoneControl.Protocol.Transport;
 
-namespace HeadphoneControl.Protocol.Tests.Fakes;
+namespace HeadphoneControl.Testing;
 
 /// <summary>
 /// In-memory <see cref="ITransport"/> for hardware-free tests (port of the reference <c>FakeTransport</c>).

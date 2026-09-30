@@ -1,7 +1,6 @@
 using HeadphoneControl.Core;
 using HeadphoneControl.Diagnostics;
 using HeadphoneControl.Platform.Windows;
-using HeadphoneControl.Protocol.Devices;
 using Microsoft.Extensions.Logging;
 
 namespace HeadphoneControl.Tests.Hardware;
@@ -19,7 +18,7 @@ public class HeadphoneDeviceHardwareTests
             .SetMinimumLevel(LogLevel.Debug)
             .AddProvider(new JournalLoggerProvider(journal, logFilePath: null)));
         IHeadsetConnector connector = new RfcommConnector(loggers);
-        await using var device = new HeadphoneDevice("WH-CH720N", connector.ConnectPreferredAsync, loggers);
+        await using var device = new HeadsetController("WH-CH720N", connector.ConnectPreferredAsync, loggers);
 
         await device.ConnectAsync(CancellationToken.None);
 

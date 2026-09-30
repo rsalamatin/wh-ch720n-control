@@ -1,5 +1,6 @@
 using HeadphoneControl.Protocol.Framing;
 using HeadphoneControl.Protocol.Transport;
+using HeadphoneControl.Testing;
 
 namespace HeadphoneControl.Protocol.Tests.Fakes;
 
