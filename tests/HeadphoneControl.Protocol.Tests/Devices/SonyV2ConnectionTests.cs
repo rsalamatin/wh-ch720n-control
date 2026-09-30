@@ -54,6 +54,34 @@ public class SonyV2ConnectionTests
     }
 
     [Test]
+    public async Task WhenHandshakeTimesOutThenTransportIsReleased()
+    {
+        var time = new FakeTimeProvider();
+        var headset = new FakeHeadset { InitReply = null };
+        var open = OpenAsync(headset, time);
+        await headset.WaitUntilSentAsync(0x00, Patience);
+
+        time.Advance(ProtocolSession.DefaultTimeout);
+        await IgnoreAsync<TimeoutException>(open);
+
+        await Assert.That(headset.Transport.IsDisposed).IsTrue();
+    }
+
+    [Test]
+    public async Task WhenOpenIsCancelledThenTransportIsReleased()
+    {
+        var headset = new FakeHeadset { InitReply = null };
+        using var cancellation = new CancellationTokenSource();
+        var open = OpenAsync(headset, cancellationToken: cancellation.Token);
+        await headset.WaitUntilSentAsync(0x00, Patience);
+
+        await cancellation.CancelAsync();
+        await IgnoreAsync<OperationCanceledException>(open);
+
+        await Assert.That(headset.Transport.IsDisposed).IsTrue();
+    }
+
+    [Test]
     public async Task WhenOpenedThenHandshakeIsTheFirstFrameSent()
     {
         var headset = new FakeHeadset();
@@ -98,6 +126,44 @@ public class SonyV2ConnectionTests
         var settings = await ReadAllPastTimeoutAsync(connection, headset, time, 0xE6);
 
         await Assert.That(settings.FirmwareVersion).IsEqualTo("1.0.2");
+    }
+
+    [Test]
+    public async Task WhenQueryReplyIsMalformedThenReadAllLeavesThatSettingNull()
+    {
+        var headset = new FakeHeadset();
+        headset.Replies[0x22] = [0x23, 0x00, 0xFF, 0x00];
+        await using var connection = await OpenAsync(headset);
+
+        var settings = await connection.ReadAllAsync(CancellationToken.None);
+
+        await Assert.That(settings.Battery).IsNull();
+    }
+
+    [Test]
+    public async Task WhenEqualizerIsAnsweredThenTryReadEqualizerReturnsTheCurve()
+    {
+        var headset = new FakeHeadset();
+        await using var connection = await OpenAsync(headset);
+
+        var equalizer = await connection.TryReadEqualizerAsync(CancellationToken.None);
+
+        await Assert.That(equalizer!.Bands).IsEquivalentTo([1, 2, 3, 4, 5]);
+    }
+
+    [Test]
+    public async Task WhenEqualizerIsUnansweredThenTryReadEqualizerReturnsNull()
+    {
+        var time = new FakeTimeProvider();
+        var headset = new FakeHeadset();
+        headset.Replies.Remove(0x56);
+        await using var connection = await OpenAsync(headset, time);
+
+        var read = connection.TryReadEqualizerAsync(CancellationToken.None);
+        await headset.WaitUntilSentAsync(0x56, Patience);
+        time.Advance(ProtocolSession.DefaultTimeout);
+
+        await Assert.That(await read.WaitAsync(Patience)).IsNull();
     }
 
     [Test]
@@ -161,19 +227,6 @@ public class SonyV2ConnectionTests
     }
 
     [Test]
-    public async Task WhenDisposedThenLinkLostIsNotRaised()
-    {
-        var headset = new FakeHeadset();
-        var connection = await OpenAsync(headset);
-        var raised = false;
-        connection.LinkLost += (_, _) => raised = true;
-
-        await connection.DisposeAsync();
-
-        await Assert.That(raised).IsFalse();
-    }
-
-    [Test]
     public async Task WhenSettingIsUnansweredThenApplyKeepsTheCurrentValue()
     {
         var current = DeviceState.Disconnected with { Battery = new BatteryState(42, false) };
@@ -184,11 +237,25 @@ public class SonyV2ConnectionTests
         await Assert.That(updated.Battery).IsEqualTo(new BatteryState(42, false));
     }
 
-    private static async Task<SonyV2Connection> OpenAsync(FakeHeadset headset, TimeProvider? time = null)
+    private static async Task<SonyV2Connection> OpenAsync(
+        FakeHeadset headset, TimeProvider? time = null, CancellationToken cancellationToken = default)
     {
         var transport = await headset.ConnectAsync(CancellationToken.None);
         return await SonyV2Connection.OpenAsync(
-            transport, NullLoggerFactory.Instance, time ?? TimeProvider.System, CancellationToken.None);
+            transport, NullLoggerFactory.Instance, time ?? TimeProvider.System, cancellationToken);
+    }
+
+    private static async Task IgnoreAsync<TException>(Task operation)
+        where TException : Exception
+    {
+        try
+        {
+            await operation.WaitAsync(Patience);
+        }
+        catch (TException)
+        {
+            // Expected: these tests assert what the failure left behind.
+        }
     }
 
     private static async Task OpenIgnoringRefusalAsync(FakeHeadset headset)

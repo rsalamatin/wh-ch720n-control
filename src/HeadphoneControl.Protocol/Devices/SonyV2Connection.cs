@@ -12,10 +12,23 @@ namespace HeadphoneControl.Protocol.Devices;
 /// link drops; open a new one to reconnect.
 /// </summary>
 /// <remarks>
-/// Requests are serialized by the session. Failures are the session's: <see cref="TimeoutException"/> when no ACK or
-/// response arrives in time, <see cref="TransportException"/> when the link is gone, <see cref="FormatException"/> for a
-/// malformed reply. Events are raised in order from the session's dispatch task, never after
-/// <see cref="DisposeAsync"/> returns.
+/// <para>
+/// Requests are serialized by the session. Every async member fails only with one of these types:
+/// </para>
+/// <list type="bullet">
+/// <item><see cref="TransportException"/>: the link is gone, or the connection was disposed while a request was in
+/// flight.</item>
+/// <item><see cref="TimeoutException"/>: no ACK or response in time; the link may still be usable.</item>
+/// <item><see cref="FormatException"/> (incl. <c>ProtocolFormatException</c>): a malformed reply.</item>
+/// <item><see cref="NotSupportedException"/>: <see cref="OpenAsync"/> only; the device is not a confirmed V2 device.</item>
+/// <item><see cref="ArgumentException"/> (incl. <see cref="ArgumentNullException"/> and
+/// <see cref="ArgumentOutOfRangeException"/>): a null argument or a value the command builders reject.</item>
+/// <item><see cref="ObjectDisposedException"/>: called after <see cref="DisposeAsync"/>.</item>
+/// <item><see cref="OperationCanceledException"/>: the caller's token was cancelled.</item>
+/// </list>
+/// <para>
+/// Events are raised in order from the session's dispatch task, never after <see cref="DisposeAsync"/> returns.
+/// </para>
 /// </remarks>
 public sealed class SonyV2Connection : IAsyncDisposable
 {
@@ -26,7 +39,7 @@ public sealed class SonyV2Connection : IAsyncDisposable
     // Set by OpenAsync before the instance is handed out, so every public member sees it.
     private V2CommandSet _commands = null!;
 
-    // Subscribes before the session starts, so a link loss during the handshake is latched in IsLinkLost.
+    // Subscribes before the session starts, so a link loss before the owner subscribes is still latched in IsLinkLost.
     private SonyV2Connection(ProtocolSession session, ILogger<SonyV2Connection> logger)
     {
         _session = session;
@@ -49,7 +62,7 @@ public sealed class SonyV2Connection : IAsyncDisposable
     /// <summary>
     /// Starts a session over <paramref name="transport"/>, sends the init handshake and confirms a V2 device.
     /// Throws <see cref="NotSupportedException"/> when either signal is not V2; then only the handshake was sent.
-    /// On any failure the transport is disposed.
+    /// On any failure after the arguments are validated, the transport is disposed.
     /// </summary>
     public static async Task<SonyV2Connection> OpenAsync(
         TransportConnection transport,
