@@ -32,7 +32,7 @@ public static class HeadsetSelection
     {
         ArgumentNullException.ThrowIfNull(connector);
         var headsets = await connector.FindPairedAsync(cancellationToken).ConfigureAwait(false);
-        var headset = headsets.FirstOrDefault()
+        var headset = OrderForDisplay(headsets).FirstOrDefault()
             ?? throw new TransportException("No paired Sony headset found. Pair the WH-CH720N in Windows Bluetooth settings.");
         return await connector.ConnectAsync(headset, cancellationToken).ConfigureAwait(false);
     }

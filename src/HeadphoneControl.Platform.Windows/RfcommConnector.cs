@@ -11,7 +11,8 @@ namespace HeadphoneControl.Platform.Windows;
 public sealed class RfcommConnector : IHeadsetConnector
 {
     // RfcommTransport has no timeout of its own, and with the headset off the service lookups plus the socket
-    // connect can take this long before Windows reports an error.
+    // connect can take this long before Windows reports an error. The budget bounds each call separately, so
+    // HeadsetSelection.ConnectPreferredAsync (list, then connect) can take up to two budgets.
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(20);
 
     private readonly ILoggerFactory _loggerFactory;

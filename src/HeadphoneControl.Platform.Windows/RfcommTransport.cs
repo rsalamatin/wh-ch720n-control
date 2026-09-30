@@ -12,11 +12,8 @@ using Windows.Storage.Streams;
 
 namespace HeadphoneControl.Platform.Windows;
 
-/// <summary>
-/// <see cref="ITransport"/> over the Sony RFCOMM control channel of a paired headset. Prefers the V2 service and
-/// only falls back to V1 when V2 is absent; the generation actually connected is reported in
-/// <see cref="DetectedGeneration"/> so the caller can refuse to send V2 opcodes to a V1 device.
-/// </summary>
+// Prefers the V2 service and only falls back to V1 when V2 is absent; the generation actually connected is reported
+// in DetectedGeneration so the caller can refuse to send V2 opcodes to a V1 device.
 internal sealed class RfcommTransport : ITransport
 {
     private readonly string _deviceId;
@@ -45,13 +42,11 @@ internal sealed class RfcommTransport : ITransport
 
     public bool IsConnected => _isConnected;
 
-    /// <summary>
-    /// Generation of the service UUID this transport connected to; <see cref="ProtocolGeneration.Unknown"/>
-    /// before <see cref="ConnectAsync"/> succeeds.
-    /// </summary>
+    // Generation of the service UUID actually connected to; Unknown until ConnectAsync succeeds, so a failed or
+    // pending connect can never pass for V2.
     public ProtocolGeneration DetectedGeneration { get; private set; } = ProtocolGeneration.Unknown;
 
-    /// <remarks>A transport connects once; create a new one to reconnect.</remarks>
+    // A transport connects once; create a new one to reconnect.
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -175,10 +170,8 @@ internal sealed class RfcommTransport : ITransport
         }
     }
 
-    /// <remarks>
-    /// Cancelling a pending read cancels the underlying WinRT operation; the socket is not guaranteed to be usable
-    /// afterwards, so callers should dispose the transport after cancelling a receive.
-    /// </remarks>
+    // Cancelling a pending read cancels the underlying WinRT operation; the socket is not guaranteed to be usable
+    // afterwards, so callers should dispose the transport after cancelling a receive.
     public async Task<int> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken)
     {
         var socket = GetConnectedSocket();

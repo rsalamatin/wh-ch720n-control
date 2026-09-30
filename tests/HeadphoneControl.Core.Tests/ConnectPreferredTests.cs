@@ -18,14 +18,14 @@ public class ConnectPreferredTests
     }
 
     [Test]
-    public async Task WhenSeveralHeadsetsArePairedThenTheFirstListedIsConnected()
+    public async Task WhenConnectorListsHeadsetsUnorderedThenThePreferredOneIsConnected()
     {
-        var first = new DiscoveredHeadset("WH-CH720N", "id-a", ProtocolGeneration.V2);
-        var second = new DiscoveredHeadset("WH-1000XM4", "id-b", ProtocolGeneration.V2);
+        var other = new DiscoveredHeadset("WH-1000XM4", "id-a", ProtocolGeneration.V2);
+        var preferred = new DiscoveredHeadset("WH-CH720N", "id-b", ProtocolGeneration.V2);
         var connection = new TransportConnection(Substitute.For<ITransport>(), ProtocolGeneration.V2);
         var connector = Substitute.For<IHeadsetConnector>();
-        connector.FindPairedAsync(Arg.Any<CancellationToken>()).Returns([first, second]);
-        connector.ConnectAsync(first, Arg.Any<CancellationToken>()).Returns(connection);
+        connector.FindPairedAsync(Arg.Any<CancellationToken>()).Returns([other, preferred]);
+        connector.ConnectAsync(preferred, Arg.Any<CancellationToken>()).Returns(connection);
 
         var result = await connector.ConnectPreferredAsync(CancellationToken.None);
 

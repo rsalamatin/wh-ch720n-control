@@ -3,10 +3,7 @@ using HeadphoneControl.Protocol.Transport;
 
 namespace HeadphoneControl.Platform.Windows;
 
-/// <summary>
-/// Turns WinRT/COM failures from the Bluetooth stack into <see cref="TransportException"/>s whose message says
-/// what the user can do about them. WinRT only reports an HRESULT, so the mapping is keyed on it.
-/// </summary>
+// WinRT only reports an HRESULT, so the user-facing advice is keyed on it.
 internal static class TransportErrors
 {
     private const int AccessDenied = unchecked((int)0x80070005);
@@ -27,10 +24,6 @@ internal static class TransportErrors
     private const int WsaHostUnreachable = unchecked((int)0x80072751);
     private const int ObjectClosed = unchecked((int)0x80000013);
 
-    /// <summary>
-    /// Wraps <paramref name="error"/> in a <see cref="TransportException"/> named after <paramref name="operation"/>,
-    /// e.g. <c>"Connecting to WH-CH720N failed: access denied ... (HRESULT 0x80070005)."</c>
-    /// </summary>
     public static TransportException FromPlatformError(string operation, Exception error)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(operation);

@@ -7,7 +7,6 @@ using Windows.Devices.Enumeration;
 
 namespace HeadphoneControl.Platform.Windows;
 
-/// <summary>Finds paired Bluetooth devices that advertise a Sony control service.</summary>
 internal sealed class HeadsetDiscovery
 {
     private readonly ILogger<HeadsetDiscovery> _logger;
@@ -18,11 +17,6 @@ internal sealed class HeadsetDiscovery
         _logger = logger;
     }
 
-    /// <summary>
-    /// Lists paired devices exposing the Sony V2 or V1 RFCOMM service, WH-CH720N first. Uses the SDP cache, so
-    /// headsets that are paired but currently off are listed too.
-    /// </summary>
-    /// <exception cref="TransportException">Windows could not enumerate paired Bluetooth devices.</exception>
     public async Task<IReadOnlyList<DiscoveredHeadset>> FindPairedHeadsetsAsync(CancellationToken cancellationToken)
     {
         DeviceInformationCollection paired;

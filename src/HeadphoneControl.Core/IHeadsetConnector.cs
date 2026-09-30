@@ -8,9 +8,7 @@ namespace HeadphoneControl.Core;
 /// </summary>
 public interface IHeadsetConnector
 {
-    /// <summary>
-    /// Lists paired devices exposing a Sony control service, in <see cref="HeadsetSelection.OrderForDisplay"/> order.
-    /// </summary>
+    /// <summary>Lists paired devices exposing a Sony control service.</summary>
     /// <exception cref="TransportException">The platform could not enumerate paired Bluetooth devices.</exception>
     /// <exception cref="TimeoutException">The platform did not finish listing them in time.</exception>
     Task<IReadOnlyList<DiscoveredHeadset>> FindPairedAsync(CancellationToken cancellationToken);

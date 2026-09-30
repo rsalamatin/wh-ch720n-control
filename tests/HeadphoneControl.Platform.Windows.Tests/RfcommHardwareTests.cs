@@ -32,7 +32,7 @@ public class RfcommHardwareTests
 
     [Test]
     [Explicit]
-    public async Task WhenConnectingToPairedWhCh720nThenTransportDetectsV2()
+    public async Task WhenConnectingToPairedWhCh720nThenConnectionReportsV2Service()
     {
         var connector = new RfcommConnector(NullLoggerFactory.Instance);
 

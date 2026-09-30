@@ -24,7 +24,7 @@ Expected: 3 tests pass.
 | Test | Proves |
 | --- | --- |
 | `WhenPairedWhCh720nThenV2ServiceIsFound` | Discovery lists the headset with `Generation = V2` |
-| `WhenConnectingToPairedWhCh720nThenTransportDetectsV2` | The RFCOMM socket opens on the V2 service UUID |
+| `WhenConnectingToPairedWhCh720nThenConnectionReportsV2Service` | The RFCOMM socket opens on the V2 service UUID |
 | `WhenV2InitHandshakeIsSentThenHeadsetReplies` | Bytes flow both ways |
 
 The handshake sends `3E0C000000000200000E3C`. A reply like the following (captured 2026-09-27) is good:
