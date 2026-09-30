@@ -1,6 +1,6 @@
 # Development status
 
-Last updated: 2026-09-28. The solution builds with 0 warnings. 440 tests pass: 320 in `HeadphoneControl.Protocol.Tests` and 120 in `HeadphoneControl.Tests`.
+Last updated: 2026-09-30. The solution builds with 0 warnings. 484 non-Explicit tests pass: 340 in `HeadphoneControl.Protocol.Tests`, 11 in `HeadphoneControl.Core.Tests`, 22 in `HeadphoneControl.Platform.Windows.Tests` and 111 in `HeadphoneControl.Tests`.
 
 ## How the work was organised
 
@@ -22,7 +22,7 @@ Git is not installed, so the agents could not use worktrees. Instead, each agent
 | Framing | `Protocol/Framing` | Escaping, checksum, the 2048-byte cap, and resync after bad frames. |
 | Session | `Protocol/Session/ProtocolSession.cs` | 1-bit seq/ACK; every frame type is ACKed; duplicates are dropped; replies are matched by opcode and subtype; no stale-reply buffer; notifications and the `Disconnected` event are raised on a dispatch task; one timeout covers the write and the wait. |
 | V2 commands | `Protocol/Commands` | Builders and parsers for battery, NC/ambient, EQ, DSEE, firmware and codec, plus applying notifications. Auto power-off was removed on 2026-09-28 (see below). **Safety:** `V2CommandSet.FromHandshake(transportGeneration, initReply)` is the only way to get the command set, and it requires both the RFCOMM service and the init reply to say V2 (reply of 8 bytes with byte 2 equal to 0x03). |
-| RFCOMM transport | `src/HeadphoneControl/Bluetooth` | `HeadsetDiscovery` (paired devices from the SDP cache), `RfcommTransport` (reports `DetectedGeneration`), error mapping. **Verified on the real WH-CH720N:** discovery, connect, and the init handshake. |
+| RFCOMM transport | `src/HeadphoneControl.Platform.Windows` (seam and selection rule in `src/HeadphoneControl.Core`) | `RfcommConnector` (the Windows `IHeadsetConnector`), `HeadsetDiscovery` (paired devices from the SDP cache), `RfcommTransport` (reports `DetectedGeneration`), error mapping. **Verified on the real WH-CH720N:** discovery, connect, and the init handshake. |
 | UI | `src/HeadphoneControl/{Views,ViewModels,Simulation,Diagnostics,Resources}` | MVVM with debounced sliders, protection against lost updates, and handling for the full exception set. Compact flyout layout (redesigned 2026-09-29): the window follows its content height (`SizeToContent`), sections collapse to a one-line summary, ambient options appear only in Ambient mode, only failures and warnings show (in an info bar), and Refresh, device info and Diagnostics live in the `⋯` menu. The diagnostics journal opens in its own window and is written to `headphone-control.log`. `--simulated` and `--simulated-connect-failure` switch to the simulated device. |
 | Real device | `Protocol/Devices/HeadphoneDevice.cs` | **Phase 2, done.** Connects, sends the handshake, gates V2 on both signals, then refreshes state. A query that goes unanswered or comes back malformed leaves that setting null instead of failing the connection. Setters complete on the device's ACK. The EQ preset setter then re-reads the EQ, because the headset sends no EQ echo. Notifications are applied and link loss is handled. `App.CreateDevice` uses this device unless `--simulated` is passed; `--verbose` enables frame-level logging. Tests are in `tests/.../Devices` (a `FakeHeadset` replays the real init reply). |
 
@@ -61,11 +61,12 @@ Git is not installed, so the agents could not use worktrees. Instead, each agent
 ## Next steps
 
 **Done on 2026-09-28:**
-- The real device is wired in through `Bluetooth/RfcommConnector.cs` and `App.CreateDevice`.
+- The real device is wired in through `RfcommConnector` (now in `HeadphoneControl.Platform.Windows`) and `App.CreateDevice`.
 - Two review rounds were completed and their fixes applied.
 - Hardware sessions: connect, noise control, EQ and DSEE all work on the real headset. The DSEE notify opcode and the echo after each SET are confirmed.
 
 **Remaining:**
+0. Architecture refactor, approved on 2026-09-29: Steps 1 and 2a were done on 2026-09-30. Next is Step 2b. See `docs/architecture-refactor-plan.md`.
 1. On hardware, check the codec byte map for codecs other than AAC. Focus on Voice and the headset button were confirmed on 2026-09-28.
 2. ~~Update `README.md`~~. Rewritten on 2026-09-28 (RFCOMM, switches, tests, layout, limitations).
 
