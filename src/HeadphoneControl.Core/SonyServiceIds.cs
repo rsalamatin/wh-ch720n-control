@@ -1,6 +1,6 @@
 using HeadphoneControl.Protocol.Devices;
 
-namespace HeadphoneControl.Bluetooth;
+namespace HeadphoneControl.Core;
 
 /// <summary>
 /// RFCOMM service class UUIDs of the Sony control channel. Which one a device advertises tells the

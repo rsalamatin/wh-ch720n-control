@@ -1,9 +1,9 @@
-﻿using HeadphoneControl.Bluetooth;
+using HeadphoneControl.Core;
 using HeadphoneControl.Protocol.Devices;
 
-namespace HeadphoneControl.Tests.Bluetooth;
+namespace HeadphoneControl.Core.Tests;
 
-public class HeadsetDiscoveryTests
+public class HeadsetSelectionTests
 {
     [Test]
     public async Task WhenWhCh720nIsListedLastThenItComesFirst()
@@ -14,7 +14,7 @@ public class HeadsetDiscoveryTests
             new DiscoveredHeadset("LE_WH-CH720N", "id-b", ProtocolGeneration.V2),
         };
 
-        var ordered = HeadsetDiscovery.OrderForDisplay(headsets);
+        var ordered = HeadsetSelection.OrderForDisplay(headsets);
 
         await Assert.That(ordered[0].DeviceId).IsEqualTo("id-b");
     }
@@ -28,7 +28,7 @@ public class HeadsetDiscoveryTests
             new DiscoveredHeadset("WH-CH720N", "id-b", ProtocolGeneration.V2),
         };
 
-        var ordered = HeadsetDiscovery.OrderForDisplay(headsets);
+        var ordered = HeadsetSelection.OrderForDisplay(headsets);
 
         await Assert.That(ordered.Select(h => h.DeviceId)).IsEquivalentTo(["id-b"]);
     }
@@ -42,7 +42,7 @@ public class HeadsetDiscoveryTests
             new DiscoveredHeadset("WH-CH720N", "id-b", ProtocolGeneration.V2),
         };
 
-        var ordered = HeadsetDiscovery.OrderForDisplay(headsets);
+        var ordered = HeadsetSelection.OrderForDisplay(headsets);
 
         await Assert.That(ordered.Count).IsEqualTo(2);
     }
@@ -56,7 +56,7 @@ public class HeadsetDiscoveryTests
             new DiscoveredHeadset("Z-new", "id-b", ProtocolGeneration.V2),
         };
 
-        var ordered = HeadsetDiscovery.OrderForDisplay(headsets);
+        var ordered = HeadsetSelection.OrderForDisplay(headsets);
 
         await Assert.That(ordered[0].DeviceId).IsEqualTo("id-b");
     }
@@ -71,7 +71,7 @@ public class HeadsetDiscoveryTests
             new DiscoveredHeadset("WH-A", "id-a", ProtocolGeneration.V2),
         };
 
-        var ordered = HeadsetDiscovery.OrderForDisplay(headsets);
+        var ordered = HeadsetSelection.OrderForDisplay(headsets);
 
         await Assert.That(ordered.Select(h => h.DeviceId)).IsEquivalentTo(["id-a", "id-b", "id-c"], TUnit.Assertions.Enums.CollectionOrdering.Matching);
     }

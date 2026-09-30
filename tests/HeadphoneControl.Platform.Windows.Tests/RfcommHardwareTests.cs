@@ -1,12 +1,13 @@
-﻿using HeadphoneControl.Bluetooth;
+using HeadphoneControl.Core;
 using HeadphoneControl.Protocol.Devices;
+using HeadphoneControl.Protocol.Transport;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace HeadphoneControl.Tests.Bluetooth;
+namespace HeadphoneControl.Platform.Windows.Tests;
 
 /// <summary>
 /// Needs a WH-CH720N paired with (and ideally connected to) this PC. Run explicitly, e.g.
-/// <c>dotnet test --project tests/HeadphoneControl.Tests -- --treenode-filter "/*/*/RfcommHardwareTests/*"</c>.
+/// <c>dotnet test --project tests/HeadphoneControl.Platform.Windows.Tests -- --treenode-filter "/*/*/RfcommHardwareTests/*"</c>.
 /// Only the read-only V2 init handshake is ever sent.
 /// </summary>
 // The headset accepts a single RFCOMM connection to its control channel, so these must run one at a time.
@@ -22,9 +23,9 @@ public class RfcommHardwareTests
     [Explicit]
     public async Task WhenPairedWhCh720nThenV2ServiceIsFound()
     {
-        var discovery = new HeadsetDiscovery(NullLoggerFactory.Instance);
+        var connector = new RfcommConnector(NullLoggerFactory.Instance);
 
-        var headset = await FindHeadsetAsync(discovery);
+        var headset = await FindHeadsetAsync(connector);
 
         await Assert.That(headset.Generation).IsEqualTo(ProtocolGeneration.V2);
     }
@@ -33,39 +34,37 @@ public class RfcommHardwareTests
     [Explicit]
     public async Task WhenConnectingToPairedWhCh720nThenTransportDetectsV2()
     {
-        var discovery = new HeadsetDiscovery(NullLoggerFactory.Instance);
-        await using var transport = discovery.CreateTransport(await FindHeadsetAsync(discovery));
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var connector = new RfcommConnector(NullLoggerFactory.Instance);
 
-        await transport.ConnectAsync(timeout.Token);
+        var connection = await connector.ConnectAsync(await FindHeadsetAsync(connector), CancellationToken.None);
+        await using var transport = connection.Transport;
 
-        await Assert.That(transport.DetectedGeneration).IsEqualTo(ProtocolGeneration.V2);
+        await Assert.That(connection.ServiceGeneration).IsEqualTo(ProtocolGeneration.V2);
     }
 
     [Test]
     [Explicit]
     public async Task WhenV2InitHandshakeIsSentThenHeadsetReplies()
     {
-        var discovery = new HeadsetDiscovery(NullLoggerFactory.Instance);
-        await using var transport = discovery.CreateTransport(await FindHeadsetAsync(discovery));
-        using var connectTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        await transport.ConnectAsync(connectTimeout.Token);
+        var connector = new RfcommConnector(NullLoggerFactory.Instance);
+        var connection = await connector.ConnectAsync(await FindHeadsetAsync(connector), CancellationToken.None);
+        await using var transport = connection.Transport;
 
         // Never send V2 bytes unless the connected service really is V2 (0x22 means POWER OFF on V1).
-        await Assert.That(transport.DetectedGeneration).IsEqualTo(ProtocolGeneration.V2);
+        await Assert.That(connection.ServiceGeneration).IsEqualTo(ProtocolGeneration.V2);
 
         await transport.SendAsync(InitHandshakeFrame, CancellationToken.None);
         var reply = await CollectRepliesAsync(transport, TimeSpan.FromSeconds(3));
-        Console.WriteLine($"Generation: {transport.DetectedGeneration}");
+        Console.WriteLine($"Generation: {connection.ServiceGeneration}");
         Console.WriteLine($"Sent:  {Convert.ToHexString(InitHandshakeFrame)}");
         Console.WriteLine($"Reply: {Convert.ToHexString(reply)}");
 
         await Assert.That(reply.Length).IsGreaterThan(0);
     }
 
-    private static async Task<DiscoveredHeadset> FindHeadsetAsync(HeadsetDiscovery discovery)
+    private static async Task<DiscoveredHeadset> FindHeadsetAsync(RfcommConnector connector)
     {
-        var headsets = await discovery.FindPairedHeadsetsAsync(CancellationToken.None);
+        var headsets = await connector.FindPairedAsync(CancellationToken.None);
         Console.WriteLine($"Discovered: {string.Join(", ", headsets)}");
         return headsets.FirstOrDefault(h => h.Name.Contains(Model, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException(
@@ -74,7 +73,7 @@ public class RfcommHardwareTests
     }
 
     // Reads everything the headset sends within the window (ACK plus response, possibly notifications).
-    private static async Task<byte[]> CollectRepliesAsync(RfcommTransport transport, TimeSpan window)
+    private static async Task<byte[]> CollectRepliesAsync(ITransport transport, TimeSpan window)
     {
         var received = new List<byte>();
         var buffer = new byte[2048];

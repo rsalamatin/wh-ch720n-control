@@ -1,6 +1,6 @@
 # Hardware smoke test: RFCOMM transport (WH-CH720N)
 
-A manual check of `src/HeadphoneControl/Bluetooth` against a real headset. The probe sends only the read-only V2
+A manual check of `src/HeadphoneControl.Platform.Windows` against a real headset. The probe sends only the read-only V2
 init handshake. It never sends battery (`0x22`) or SET commands.
 
 ## 1. Prepare
@@ -16,7 +16,7 @@ init handshake. It never sends battery (`0x22`) or SET commands.
 ## 2. Run the explicit hardware tests
 
 ```powershell
-dotnet test --project tests/HeadphoneControl.Tests -- --treenode-filter "/*/*/RfcommHardwareTests/*" --output Detailed
+dotnet test --project tests/HeadphoneControl.Platform.Windows.Tests -- --treenode-filter "/*/*/RfcommHardwareTests/*" --output Detailed
 ```
 
 Expected: 3 tests pass.

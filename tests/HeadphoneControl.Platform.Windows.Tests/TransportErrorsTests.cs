@@ -1,7 +1,6 @@
-﻿using System.Runtime.InteropServices;
-using HeadphoneControl.Bluetooth;
+using System.Runtime.InteropServices;
 
-namespace HeadphoneControl.Tests.Bluetooth;
+namespace HeadphoneControl.Platform.Windows.Tests;
 
 public class TransportErrorsTests
 {

@@ -3,8 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
-using HeadphoneControl.Bluetooth;
+using HeadphoneControl.Core;
 using HeadphoneControl.Diagnostics;
+using HeadphoneControl.Platform.Windows;
 using HeadphoneControl.Protocol.Devices;
 using HeadphoneControl.Simulation;
 using HeadphoneControl.ViewModels;
@@ -73,7 +74,7 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    // The only place that picks the headset implementation.
+    // The only place that picks the headset implementation and the platform backend.
     private static IHeadphoneDevice CreateDevice(string[] args, ILoggerFactory loggerFactory)
     {
         var failConnect = args.Contains(SimulatedConnectFailureSwitch, StringComparer.OrdinalIgnoreCase);
@@ -82,9 +83,8 @@ public partial class App : Application
             return new SimulatedHeadphoneDevice(SimulatedLatency) { FailNextConnect = failConnect };
         }
 
-        var connector = new RfcommConnector(
-            new HeadsetDiscovery(loggerFactory), loggerFactory.CreateLogger<RfcommConnector>());
-        return new HeadphoneDevice(HeadsetModel, connector.ConnectAsync, loggerFactory);
+        IHeadsetConnector connector = new RfcommConnector(loggerFactory);
+        return new HeadphoneDevice(HeadsetModel, connector.ConnectPreferredAsync, loggerFactory);
     }
 
     private static void HookUnhandledExceptions(ILogger logger, JournalLoggerProvider logProvider)

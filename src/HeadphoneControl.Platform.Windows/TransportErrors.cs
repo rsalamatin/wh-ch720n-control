@@ -1,13 +1,13 @@
 using System.Runtime.InteropServices;
 using HeadphoneControl.Protocol.Transport;
 
-namespace HeadphoneControl.Bluetooth;
+namespace HeadphoneControl.Platform.Windows;
 
 /// <summary>
 /// Turns WinRT/COM failures from the Bluetooth stack into <see cref="TransportException"/>s whose message says
 /// what the user can do about them. WinRT only reports an HRESULT, so the mapping is keyed on it.
 /// </summary>
-public static class TransportErrors
+internal static class TransportErrors
 {
     private const int AccessDenied = unchecked((int)0x80070005);
     private const int GenFailure = unchecked((int)0x8007001F);

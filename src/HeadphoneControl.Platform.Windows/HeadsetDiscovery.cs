@@ -1,27 +1,21 @@
-using HeadphoneControl.Protocol.Devices;
+using HeadphoneControl.Core;
 using HeadphoneControl.Protocol.Transport;
 using Microsoft.Extensions.Logging;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Rfcomm;
 using Windows.Devices.Enumeration;
 
-namespace HeadphoneControl.Bluetooth;
+namespace HeadphoneControl.Platform.Windows;
 
-/// <summary>
-/// Finds paired Bluetooth devices that advertise a Sony control service and creates transports for them.
-/// </summary>
-public sealed class HeadsetDiscovery
+/// <summary>Finds paired Bluetooth devices that advertise a Sony control service.</summary>
+internal sealed class HeadsetDiscovery
 {
-    private const string PreferredModel = "WH-CH720N";
-
-    private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<HeadsetDiscovery> _logger;
 
-    public HeadsetDiscovery(ILoggerFactory loggerFactory)
+    public HeadsetDiscovery(ILogger<HeadsetDiscovery> logger)
     {
-        ArgumentNullException.ThrowIfNull(loggerFactory);
-        _loggerFactory = loggerFactory;
-        _logger = loggerFactory.CreateLogger<HeadsetDiscovery>();
+        ArgumentNullException.ThrowIfNull(logger);
+        _logger = logger;
     }
 
     /// <summary>
@@ -59,34 +53,11 @@ public sealed class HeadsetDiscovery
             }
         }
 
-        var ordered = OrderForDisplay(headsets);
+        var ordered = HeadsetSelection.OrderForDisplay(headsets);
         _logger.LogInformation(
             "Sony headsets: {Headsets}",
             ordered.Count == 0 ? "none" : string.Join(", ", ordered.Select(h => $"{h.Name} ({h.Generation})")));
         return ordered;
-    }
-
-    /// <summary>Creates an unconnected transport for <paramref name="headset"/>.</summary>
-    public RfcommTransport CreateTransport(DiscoveredHeadset headset)
-    {
-        ArgumentNullException.ThrowIfNull(headset);
-        return new RfcommTransport(headset.DeviceId, headset.Name, _loggerFactory.CreateLogger<RfcommTransport>());
-    }
-
-    /// <summary>
-    /// Drops devices without a Sony control service and orders the rest for display: WH-CH720N first, then V2
-    /// before V1, then by name. Other Sony models are kept so the user can still pick them.
-    /// </summary>
-    public static IReadOnlyList<DiscoveredHeadset> OrderForDisplay(IEnumerable<DiscoveredHeadset> headsets)
-    {
-        ArgumentNullException.ThrowIfNull(headsets);
-        return headsets
-            .Where(h => h.Generation != ProtocolGeneration.Unknown)
-            .OrderByDescending(h => h.Name.Contains(PreferredModel, StringComparison.OrdinalIgnoreCase))
-            .ThenByDescending(h => h.Generation == ProtocolGeneration.V2)
-            .ThenBy(h => h.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(h => h.DeviceId, StringComparer.Ordinal)
-            .ToList();
     }
 
     private async Task<DiscoveredHeadset?> ProbeAsync(DeviceInformation info, CancellationToken cancellationToken)

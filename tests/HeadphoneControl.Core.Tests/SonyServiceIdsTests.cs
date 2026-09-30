@@ -1,7 +1,7 @@
-﻿using HeadphoneControl.Bluetooth;
+using HeadphoneControl.Core;
 using HeadphoneControl.Protocol.Devices;
 
-namespace HeadphoneControl.Tests.Bluetooth;
+namespace HeadphoneControl.Core.Tests;
 
 public class SonyServiceIdsTests
 {

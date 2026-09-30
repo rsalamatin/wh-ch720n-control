@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Runtime.InteropServices.WindowsRuntime;
+using HeadphoneControl.Core;
 using HeadphoneControl.Protocol.Devices;
 using HeadphoneControl.Protocol.Transport;
 using Microsoft.Extensions.Logging;
@@ -9,15 +10,14 @@ using Windows.Devices.Enumeration;
 using Windows.Networking.Sockets;
 using Windows.Storage.Streams;
 
-namespace HeadphoneControl.Bluetooth;
+namespace HeadphoneControl.Platform.Windows;
 
 /// <summary>
 /// <see cref="ITransport"/> over the Sony RFCOMM control channel of a paired headset. Prefers the V2 service and
 /// only falls back to V1 when V2 is absent; the generation actually connected is reported in
 /// <see cref="DetectedGeneration"/> so the caller can refuse to send V2 opcodes to a V1 device.
-/// Create instances with <see cref="HeadsetDiscovery.CreateTransport"/>.
 /// </summary>
-public sealed class RfcommTransport : ITransport
+internal sealed class RfcommTransport : ITransport
 {
     private readonly string _deviceId;
     private readonly ILogger<RfcommTransport> _logger;

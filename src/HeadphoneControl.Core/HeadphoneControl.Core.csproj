@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Platform-neutral on purpose: platform backends plug in below it through IHeadsetConnector. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HeadphoneControl.Protocol\HeadphoneControl.Protocol.csproj" />
+  </ItemGroup>
+
+</Project>

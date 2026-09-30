@@ -7,14 +7,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Headphone Control** is a C# / .NET 10 Avalonia desktop app (CommunityToolkit.Mvvm) that controls a Sony **WH-CH720N** on Windows 11. It talks to the headset over WinRT Bluetooth RFCOMM through `Microsoft.Windows.SDK.NET.Ref`.
 
 The solution is `HeadphoneControl.sln`:
-- **`src/HeadphoneControl`:** the Avalonia app (`net10.0-windows10.0.22621.0`). It includes the WinRT RFCOMM transport and connector in `Bluetooth/` and a simulated device in `Simulation/`.
+- **`src/HeadphoneControl`:** the Avalonia app (`net10.0-windows10.0.22621.0`). It includes a simulated device in `Simulation/`. `App.CreateDevice` is the composition root and the only place that picks the platform backend.
 - **`src/HeadphoneControl.Protocol`:** platform-neutral `net10.0` code:
   - framing;
   - session (ACK/sequence, request matching, notifications);
   - V2 commands;
   - `HeadphoneDevice`;
   - the device state contracts.
-- **`tests/HeadphoneControl.Protocol.Tests` and `tests/HeadphoneControl.Tests`:** TUnit test projects. The `[Explicit]` hardware tests need the paired headset.
+- **`src/HeadphoneControl.Core`:** platform-neutral `net10.0`. The platform seam `IHeadsetConnector` (list paired headsets, connect to one), `DiscoveredHeadset`, `SonyServiceIds`, and `HeadsetSelection` (display order, connect to the preferred headset).
+- **`src/HeadphoneControl.Platform.Windows`:** the Windows `IHeadsetConnector` (`RfcommConnector`), with WinRT discovery, `RfcommTransport` and the HRESULT error mapping. Everything but `RfcommConnector` is internal.
+- **Tests:** TUnit projects `tests/HeadphoneControl.Protocol.Tests`, `tests/HeadphoneControl.Core.Tests`, `tests/HeadphoneControl.Platform.Windows.Tests` and `tests/HeadphoneControl.Tests`. The `[Explicit]` hardware tests (`RfcommHardwareTests` in Platform.Windows.Tests, `HeadphoneDeviceHardwareTests` in HeadphoneControl.Tests) need the paired headset.
+- **Refactor in progress:** `docs/architecture-refactor-plan.md`.
 
 Build output goes to `artifacts/` (`UseArtifactsOutput`). When several agents build at the same time, each passes `-p:Lane=<name>` so it builds into `artifacts/lanes/<name>` and doesn't lock another agent's files. Lane folders are disposable.
 
@@ -23,7 +26,7 @@ Docs:
 - `docs/backlog.md`: future improvements.
 - `docs/hardware-smoke-test.md`: manual hardware checklist.
 
-The workspace is not a git repository. The C++ reference implementation (Sony Device Center) that the protocol was ported from is not in this workspace. Source citations like `ProtocolV2.cpp:129` in code comments refer to it.
+The C++ reference implementation (Sony Device Center) that the protocol was ported from is not in this workspace. Source citations like `ProtocolV2.cpp:129` in code comments refer to it.
 
 ## Commands
 
@@ -32,6 +35,8 @@ dotnet build HeadphoneControl.sln
 dotnet run --project src/HeadphoneControl                 # real headset; add "-- --simulated" to run without hardware
 dotnet run --project src/HeadphoneControl -- --verbose    # also log raw protocol frames (Debug)
 dotnet test --project tests/HeadphoneControl.Protocol.Tests   # Microsoft.Testing.Platform runner (global.json)
+dotnet test --project tests/HeadphoneControl.Core.Tests
+dotnet test --project tests/HeadphoneControl.Platform.Windows.Tests
 dotnet test --project tests/HeadphoneControl.Tests
 dotnet test --project tests/HeadphoneControl.Protocol.Tests --treenode-filter "/*/*/FrameCodecTests/*"   # subset
 dotnet test --project tests/HeadphoneControl.Tests -- --treenode-filter "/*/*/HeadphoneDeviceHardwareTests/*"   # [Explicit] read-only hardware test

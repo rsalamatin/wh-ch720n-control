@@ -1,9 +1,8 @@
-﻿using HeadphoneControl.Bluetooth;
 using HeadphoneControl.Protocol.Devices;
 using HeadphoneControl.Protocol.Transport;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace HeadphoneControl.Tests.Bluetooth;
+namespace HeadphoneControl.Platform.Windows.Tests;
 
 public class RfcommTransportTests
 {
@@ -113,6 +112,5 @@ public class RfcommTransportTests
     }
 
     private static RfcommTransport CreateTransport() =>
-        new HeadsetDiscovery(NullLoggerFactory.Instance)
-            .CreateTransport(new DiscoveredHeadset("WH-CH720N", InvalidDeviceId, ProtocolGeneration.V2));
+        new(InvalidDeviceId, "WH-CH720N", NullLogger<RfcommTransport>.Instance);
 }

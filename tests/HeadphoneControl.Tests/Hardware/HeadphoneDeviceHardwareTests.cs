@@ -1,9 +1,10 @@
-using HeadphoneControl.Bluetooth;
+using HeadphoneControl.Core;
 using HeadphoneControl.Diagnostics;
+using HeadphoneControl.Platform.Windows;
 using HeadphoneControl.Protocol.Devices;
 using Microsoft.Extensions.Logging;
 
-namespace HeadphoneControl.Tests.Bluetooth;
+namespace HeadphoneControl.Tests.Hardware;
 
 // Needs the paired WH-CH720N. Read-only: sends only the init handshake and GET queries, never a SET.
 [NotInParallel("rfcomm-hardware")]
@@ -17,8 +18,8 @@ public class HeadphoneDeviceHardwareTests
         using var loggers = LoggerFactory.Create(builder => builder
             .SetMinimumLevel(LogLevel.Debug)
             .AddProvider(new JournalLoggerProvider(journal, logFilePath: null)));
-        var connector = new RfcommConnector(new HeadsetDiscovery(loggers), loggers.CreateLogger<RfcommConnector>());
-        await using var device = new HeadphoneDevice("WH-CH720N", connector.ConnectAsync, loggers);
+        IHeadsetConnector connector = new RfcommConnector(loggers);
+        await using var device = new HeadphoneDevice("WH-CH720N", connector.ConnectPreferredAsync, loggers);
 
         await device.ConnectAsync(CancellationToken.None);
 
