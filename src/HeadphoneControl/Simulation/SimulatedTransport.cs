@@ -9,7 +9,8 @@ namespace HeadphoneControl.Simulation;
 // an un-ACKed frame and never waits for our ACK before its next frame.
 internal sealed class SimulatedTransport : ITransport
 {
-    // The real headset sends its notification echo about 0.5 s after the ACK of a SET.
+    // The real headset sends its noise-control echo about 0.5 s after the ACK of the SET; the DSEE echo is assumed to
+    // follow the same delay. Timed from delivering the ACK, so an echo can never overtake it.
     private static readonly TimeSpan NotificationDelay = TimeSpan.FromMilliseconds(500);
 
     private readonly SimulatedHeadset _headset;
@@ -18,11 +19,11 @@ internal sealed class SimulatedTransport : ITransport
     private readonly Action<SimulatedTransport> _closed;
     private readonly FrameDecoder _decoder = new();
     private readonly Channel<byte[]> _inbound = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
-    private readonly Channel<IReadOnlyList<Frame>> _delayedReplies =
-        Channel.CreateUnbounded<IReadOnlyList<Frame>>(new UnboundedChannelOptions { SingleReader = true });
+    private readonly Channel<Response> _delayedResponses =
+        Channel.CreateUnbounded<Response>(new UnboundedChannelOptions { SingleReader = true });
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Lock _gate = new();
-    private readonly Task _replyPump;
+    private readonly Task _responsePump;
 
     private byte _nextSequence;
     private bool _disposed;
@@ -37,7 +38,7 @@ internal sealed class SimulatedTransport : ITransport
         _latency = latency;
         _timeProvider = timeProvider;
         _closed = closed;
-        _replyPump = latency > TimeSpan.Zero ? Task.Run(PumpDelayedRepliesAsync) : Task.CompletedTask;
+        _responsePump = latency > TimeSpan.Zero ? Task.Run(PumpDelayedResponsesAsync) : Task.CompletedTask;
     }
 
     // The connector opens the link, so there is nothing to connect here.
@@ -99,11 +100,18 @@ internal sealed class SimulatedTransport : ITransport
             _disposed = true;
         }
 
-        await _lifetime.CancelAsync().ConfigureAwait(false);
-        _delayedReplies.Writer.TryComplete();
-        _inbound.Writer.TryComplete();
-        await _replyPump.ConfigureAwait(false);
-        _closed(this);
+        try
+        {
+            await _lifetime.CancelAsync().ConfigureAwait(false);
+            _delayedResponses.Writer.TryComplete();
+            _inbound.Writer.TryComplete();
+            await _responsePump.ConfigureAwait(false);
+        }
+        finally
+        {
+            // Even if the pump faulted, the connector must not stay busy with a closed link.
+            _closed(this);
+        }
     }
 
     // Caller holds _gate. The headset ACKs before it replies, as captured on the real device.
@@ -113,43 +121,39 @@ internal sealed class SimulatedTransport : ITransport
             ? _headset.Handle(request.Payload.Span)
             : SimulatedHeadset.Reaction.AckOnly;
 
-        List<Frame> replies = [new Frame(FrameType.Ack, (byte)(1 - (request.Sequence & 1)), ReadOnlyMemory<byte>.Empty)];
+        List<Frame> frames = [new Frame(FrameType.Ack, (byte)(1 - (request.Sequence & 1)), ReadOnlyMemory<byte>.Empty)];
         if (reaction.Reply is { } reply)
         {
-            replies.Add(new Frame(FrameType.DataMdr, 0, reply));
+            frames.Add(new Frame(FrameType.DataMdr, 0, reply));
         }
 
+        var response = new Response(frames, reaction.Notifications);
         if (_latency > TimeSpan.Zero)
         {
-            _delayedReplies.Writer.TryWrite(replies);
+            _delayedResponses.Writer.TryWrite(response);
         }
         else
         {
-            Deliver(replies);
-        }
-
-        foreach (var notification in reaction.Notifications)
-        {
-            _ = NotifyLaterAsync(notification);
+            Deliver(response);
         }
     }
 
-    private async Task PumpDelayedRepliesAsync()
+    private async Task PumpDelayedResponsesAsync()
     {
         try
         {
-            await foreach (var replies in _delayedReplies.Reader.ReadAllAsync(_lifetime.Token).ConfigureAwait(false))
+            await foreach (var response in _delayedResponses.Reader.ReadAllAsync(_lifetime.Token).ConfigureAwait(false))
             {
                 await Task.Delay(_latency, _timeProvider, _lifetime.Token).ConfigureAwait(false);
                 lock (_gate)
                 {
-                    Deliver(replies);
+                    Deliver(response);
                 }
             }
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
-            // The link was closed; undelivered replies go with it.
+            // The link was closed; undelivered responses go with it.
         }
     }
 
@@ -167,20 +171,20 @@ internal sealed class SimulatedTransport : ITransport
 
         lock (_gate)
         {
-            Deliver([new Frame(FrameType.DataMdr, 0, payload)]);
+            Deliver(new Response([new Frame(FrameType.DataMdr, 0, payload)], []));
         }
     }
 
     // Caller holds _gate. DATA sequences are assigned here, in wire order, because the session drops a DATA frame
     // that repeats the previous sequence.
-    private void Deliver(IReadOnlyList<Frame> frames)
+    private void Deliver(Response response)
     {
         if (_disposed)
         {
             return;
         }
 
-        foreach (var frame in frames)
+        foreach (var frame in response.Frames)
         {
             var onWire = frame;
             if (frame.Type != FrameType.Ack)
@@ -191,5 +195,13 @@ internal sealed class SimulatedTransport : ITransport
 
             _inbound.Writer.TryWrite(FrameCodec.Encode(onWire));
         }
+
+        foreach (var notification in response.Notifications)
+        {
+            // Not awaited: _lifetime cancels the wait on dispose, and Deliver re-checks _disposed.
+            _ = NotifyLaterAsync(notification);
+        }
     }
+
+    private sealed record Response(IReadOnlyList<Frame> Frames, IReadOnlyList<byte[]> Notifications);
 }

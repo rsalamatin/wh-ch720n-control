@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using HeadphoneControl.Core;
 using HeadphoneControl.Protocol.Commands;
 using HeadphoneControl.Protocol.Devices;
@@ -28,6 +29,17 @@ public class SimulatedHeadsetConnectorTests
 
         await Assert.That(headsets.Select(h => $"{h.Name}/{h.Generation}"))
             .IsEquivalentTo([$"{SimulatedHeadsetConnector.HeadsetName}/V2"]);
+    }
+
+    [Test]
+    public async Task WhenAForeignHeadsetIsConnectedThenTransportExceptionIsThrown()
+    {
+        var connector = CreateConnector();
+        var foreign = new DiscoveredHeadset("WH-1000XM4", "other-device", ProtocolGeneration.V2);
+
+        Func<Task> act = () => connector.ConnectAsync(foreign, CancellationToken.None);
+
+        await Assert.That(act).Throws<TransportException>();
     }
 
     [Test]
@@ -79,15 +91,17 @@ public class SimulatedHeadsetConnectorTests
     }
 
     [Test]
-    public async Task WhenNoiseCancellingIsSetWithFocusOnVoiceThenTheEchoReportsItOff()
+    public async Task WhenNoiseControlIsSetThenTheEchoMirrorsTheRequest()
     {
-        await using var device = await ConnectAsync(CreateConnector());
-        await device.SetNoiseControlAsync(
-            new NoiseControlState(NoiseControlMode.NoiseCancelling, FocusOnVoice: true, AmbientLevel: 5), CancellationToken.None);
+        await using var link = await OpenLinkAsync(CreateConnector());
+        var commands = await link.ConfirmV2Async();
+        var request = commands.SetNoiseControl(new NoiseControlState(NoiseControlMode.NoiseCancelling, true, 5));
 
+        await link.Session.SendAsync(request.Payload, CancellationToken.None);
         _time.Advance(EchoDelay);
 
-        await WaitUntilAsync(() => device.State.NoiseControl?.FocusOnVoice == false);
+        var echo = await link.NextNotificationAsync();
+        await Assert.That(echo).IsEqualTo("69" + Convert.ToHexString(request.Payload.Span)[2..]);
     }
 
     [Test]
@@ -105,28 +119,54 @@ public class SimulatedHeadsetConnectorTests
     public async Task WhenDseeIsSetThenTheHeadsetEchoesTheNewValue()
     {
         await using var link = await OpenLinkAsync(CreateConnector());
-        var commands = V2CommandSet.FromHandshake(ProtocolGeneration.V2, (await link.HandshakeAsync()).Span);
+        var commands = await link.ConfirmV2Async();
 
         await link.Session.SendAsync(commands.SetDsee(true).Payload, CancellationToken.None);
         _time.Advance(EchoDelay);
 
-        await WaitUntilAsync(() => link.Notifications.Count > 0);
-        await Assert.That(link.Notifications[0]).IsEqualTo("E90101");
+        await Assert.That(await link.NextNotificationAsync()).IsEqualTo("E90101");
+    }
+
+    [Test]
+    public async Task WhenDseeIsSetThenTheCapturedE5FrameFollowsTheEcho()
+    {
+        await using var link = await OpenLinkAsync(CreateConnector());
+        var commands = await link.ConfirmV2Async();
+        await link.Session.SendAsync(commands.SetDsee(true).Payload, CancellationToken.None);
+        _time.Advance(EchoDelay);
+        await link.NextNotificationAsync();
+
+        var next = await link.NextNotificationAsync();
+
+        await Assert.That(next).IsEqualTo("E50100");
     }
 
     [Test]
     public async Task WhenEqualizerPresetIsSetThenNoEchoFollows()
     {
         await using var link = await OpenLinkAsync(CreateConnector());
-        var commands = V2CommandSet.FromHandshake(ProtocolGeneration.V2, (await link.HandshakeAsync()).Span);
+        var commands = await link.ConfirmV2Async();
         await link.Session.SendAsync(commands.SetEqualizerPreset(EqualizerPreset.Bright).Payload, CancellationToken.None);
 
         // The DSEE echo is a marker: any echo of the preset would be due no later and would arrive first.
         await link.Session.SendAsync(commands.SetDsee(true).Payload, CancellationToken.None);
         _time.Advance(EchoDelay);
 
-        await WaitUntilAsync(() => link.Notifications.Count > 0);
-        await Assert.That(link.Notifications[0]).IsEqualTo("E90101");
+        await Assert.That(await link.NextNotificationAsync()).IsEqualTo("E90101");
+    }
+
+    [Test]
+    public async Task WhenAnUnknownRequestIsSentThenTheHeadsetOnlyAcksIt()
+    {
+        await using var link = await OpenLinkAsync(CreateConnector());
+        var commands = await link.ConfirmV2Async();
+
+        // 26 05 is the auto power-off query the real headset only ACKs. A reply would arrive before the DSEE marker.
+        await link.Session.SendAsync(new byte[] { 0x26, 0x05 }, CancellationToken.None);
+        await link.Session.SendAsync(commands.SetDsee(true).Payload, CancellationToken.None);
+        _time.Advance(EchoDelay);
+
+        await Assert.That(await link.NextNotificationAsync()).IsEqualTo("E90101");
     }
 
     [Test]
@@ -148,6 +188,17 @@ public class SimulatedHeadsetConnectorTests
         await device.RefreshAsync(CancellationToken.None);
 
         await Assert.That(Describe(device.State.Equalizer)).IsEqualTo("Manual/5/0,1,2,1,0");
+    }
+
+    [Test]
+    public async Task WhenPresetOffFollowsACustomCurveThenTheBandsAreFlat()
+    {
+        await using var device = await ConnectAsync(CreateConnector());
+        await device.SetCustomEqualizerAsync(4, [4, 4, 4, 4, 4], CancellationToken.None);
+
+        await device.SetEqualizerPresetAsync(EqualizerPreset.Off, CancellationToken.None);
+
+        await Assert.That(Describe(device.State.Equalizer)).IsEqualTo("Off/0/0,0,0,0,0");
     }
 
     [Test]
@@ -225,11 +276,15 @@ public class SimulatedHeadsetConnectorTests
     [Test]
     public async Task WhenRepliesAreDelayedThenConnectStillReadsEverySetting()
     {
+        // System clock: the latency pump waits on real timers, which a fake clock would never fire.
         await using var device = CreateDevice(new SimulatedHeadsetConnector(TimeSpan.FromMilliseconds(1)));
 
         await device.ConnectAsync(CancellationToken.None);
 
-        await Assert.That(device.State.FirmwareVersion).IsEqualTo("1.1.4");
+        var state = device.State;
+        await Assert.That(
+                $"{state.Battery?.Level}/{state.NoiseControl?.Mode}/{state.Equalizer?.Preset}/{state.DseeEnabled}/{state.FirmwareVersion}/{state.Codec}")
+            .IsEqualTo("80/NoiseCancelling/Off/False/1.1.4/Aac");
     }
 
     private static HeadphoneDevice CreateDevice(IHeadsetConnector connector) =>
@@ -237,20 +292,6 @@ public class SimulatedHeadsetConnectorTests
 
     private static string Describe(EqualizerState? equalizer) =>
         equalizer is null ? "null" : $"{equalizer.Preset}/{equalizer.ClearBass}/{string.Join(",", equalizer.Bands)}";
-
-    private static async Task WaitUntilAsync(Func<bool> condition)
-    {
-        var deadline = DateTime.UtcNow + Patience;
-        while (!condition())
-        {
-            if (DateTime.UtcNow > deadline)
-            {
-                throw new TimeoutException("The expected simulator traffic did not arrive.");
-            }
-
-            await Task.Delay(5);
-        }
-    }
 
     private static async Task<Link> OpenLinkAsync(SimulatedHeadsetConnector connector)
     {
@@ -272,7 +313,7 @@ public class SimulatedHeadsetConnectorTests
     // A raw session over the simulated link, for traffic HeadphoneDevice does not expose.
     private sealed class Link : IAsyncDisposable
     {
-        private readonly List<string> _notifications = [];
+        private readonly Channel<string> _notifications = Channel.CreateUnbounded<string>();
 
         public Link(ProtocolSession session)
         {
@@ -282,17 +323,6 @@ public class SimulatedHeadsetConnectorTests
 
         public ProtocolSession Session { get; }
 
-        public IReadOnlyList<string> Notifications
-        {
-            get
-            {
-                lock (_notifications)
-                {
-                    return [.. _notifications];
-                }
-            }
-        }
-
         public async Task<ReadOnlyMemory<byte>> HandshakeAsync()
         {
             var handshake = ProtocolHandshake.CreateRequest();
@@ -300,14 +330,15 @@ public class SimulatedHeadsetConnectorTests
                 handshake.Payload, handshake.ResponseOpcode!.Value, handshake.ResponseSubtype, CancellationToken.None);
         }
 
+        public async Task<V2CommandSet> ConfirmV2Async() =>
+            V2CommandSet.FromHandshake(ProtocolGeneration.V2, (await HandshakeAsync()).Span);
+
+        public Task<string> NextNotificationAsync() =>
+            _notifications.Reader.ReadAsync().AsTask().WaitAsync(Patience);
+
         public ValueTask DisposeAsync() => Session.DisposeAsync();
 
-        private void OnNotification(object? sender, Frame frame)
-        {
-            lock (_notifications)
-            {
-                _notifications.Add(Convert.ToHexString(frame.Payload.Span));
-            }
-        }
+        private void OnNotification(object? sender, Frame frame) =>
+            _notifications.Writer.TryWrite(Convert.ToHexString(frame.Payload.Span));
     }
 }
