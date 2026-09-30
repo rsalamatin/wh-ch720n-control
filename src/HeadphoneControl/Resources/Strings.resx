@@ -111,10 +111,6 @@
   <data name="EmptyState_ConnectingBody" xml:space="preserve"><value>Opening the control channel to the headset.</value></data>
   <data name="EmptyState_FailedTitle" xml:space="preserve"><value>Couldn’t connect</value></data>
   <data name="EmptyState_FailedBody" xml:space="preserve"><value>Check that the headset is turned on and not in use by another control app.</value></data>
-  <data name="Error_NotConnected" xml:space="preserve"><value>The headset is not connected.</value></data>
   <data name="Error_SimulatedConnectFailure" xml:space="preserve"><value>Simulated connection failure: the headset did not answer.</value></data>
-  <data name="Error_AmbientLevelRange" xml:space="preserve"><value>Ambient level must be between 0 and 20.</value></data>
-  <data name="Error_EqualizerLevelRange" xml:space="preserve"><value>Equalizer levels must be between -10 and 10.</value></data>
-  <data name="Error_EqualizerBandCount" xml:space="preserve"><value>Exactly 5 equalizer bands are required.</value></data>
-  <data name="Error_UndefinedValue" xml:space="preserve"><value>The value is not supported by the headset.</value></data>
+  <data name="Error_SimulatedHeadsetBusy" xml:space="preserve"><value>The simulated headset already has an open control channel.</value></data>
 </root>
