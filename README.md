@@ -69,7 +69,6 @@ docs/
   development-status.md        status, verified hardware facts, next steps
   backlog.md                   future improvements
   hardware-smoke-test.md       manual checklist for the real headset
-  architecture-refactor-plan.md  design and history of the platform seam and HeadsetController
 ```
 
 ## Tests
