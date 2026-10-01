@@ -84,7 +84,7 @@ public class SimulatedHeadsetConnectorTests
         await using var device = await ConnectAsync(CreateConnector());
         var requested = new NoiseControlState(NoiseControlMode.Ambient, FocusOnVoice: true, AmbientLevel: 17);
 
-        await device.SetNoiseControlAsync(requested, CancellationToken.None);
+        await device.SetNoiseControlAsync(requested, EditPacing.Immediate, CancellationToken.None);
         await device.RefreshAsync(CancellationToken.None);
 
         await Assert.That(device.State.NoiseControl).IsEqualTo(requested);
@@ -184,7 +184,7 @@ public class SimulatedHeadsetConnectorTests
     {
         await using var device = await ConnectAsync(CreateConnector());
 
-        await device.SetCustomEqualizerAsync(5, [0, 1, 2, 1, 0], CancellationToken.None);
+        await device.SetCustomEqualizerAsync(5, [0, 1, 2, 1, 0], EditPacing.Immediate, CancellationToken.None);
         await device.RefreshAsync(CancellationToken.None);
 
         await Assert.That(Describe(device.State.Equalizer)).IsEqualTo("Manual/5/0,1,2,1,0");
@@ -194,7 +194,7 @@ public class SimulatedHeadsetConnectorTests
     public async Task WhenPresetOffFollowsACustomCurveThenTheBandsAreFlat()
     {
         await using var device = await ConnectAsync(CreateConnector());
-        await device.SetCustomEqualizerAsync(4, [4, 4, 4, 4, 4], CancellationToken.None);
+        await device.SetCustomEqualizerAsync(4, [4, 4, 4, 4, 4], EditPacing.Immediate, CancellationToken.None);
 
         await device.SetEqualizerPresetAsync(EqualizerPreset.Off, CancellationToken.None);
 

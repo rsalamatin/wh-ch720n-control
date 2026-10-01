@@ -27,6 +27,8 @@ public sealed class HeadsetController : IHeadphoneDevice
         Channel.CreateUnbounded<Message>(new UnboundedChannelOptions { SingleReader = true });
     private readonly Task _actor;
 
+    private readonly EditTracker[] _edits = [.. Enum.GetValues<SettingGroup>().Select(_ => new EditTracker())];
+
     // Per Setting, the receive ordinal of the frame (reply, ACK or notification) that last set it on the current link.
     private readonly long[] _setAt = new long[Enum.GetValues<Setting>().Length];
 
@@ -56,7 +58,20 @@ public sealed class HeadsetController : IHeadphoneDevice
         _actor = Task.Run(RunActorAsync);
     }
 
+    public static TimeSpan DefaultEditDebounce { get; } = TimeSpan.FromMilliseconds(300);
+
     public string Name { get; }
+
+    /// <summary>How long an <see cref="EditPacing.Debounced"/> edit waits for a newer edit of its group.</summary>
+    public TimeSpan EditDebounce
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, TimeSpan.Zero);
+            field = value;
+        }
+    } = DefaultEditDebounce;
 
     public DeviceState State => _state;
 
@@ -82,10 +97,14 @@ public sealed class HeadsetController : IHeadphoneDevice
             },
             cancellationToken);
 
-    public Task SetNoiseControlAsync(NoiseControlState state, CancellationToken cancellationToken)
+    public bool HasPendingEdit(SettingGroup group) => _edits[(int)group].IsPending;
+
+    public Task SetNoiseControlAsync(NoiseControlState state, EditPacing pacing, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(state);
         return SendSettingAsync(
+            SettingGroup.NoiseControl,
+            pacing,
             (link, ct) => link.SetNoiseControlAsync(state, ct),
             Setting.NoiseControl,
             current => current with { NoiseControl = NormalizeNoiseControl(state) },
@@ -93,7 +112,9 @@ public sealed class HeadsetController : IHeadphoneDevice
     }
 
     public Task SetEqualizerPresetAsync(EqualizerPreset preset, CancellationToken cancellationToken) =>
-        RunConnectedAsync(
+        EditAsync(
+            SettingGroup.Equalizer,
+            EditPacing.Immediate,
             async (link, ct) =>
             {
                 var acknowledged = await link.SetEqualizerPresetAsync(preset, ct).ConfigureAwait(false);
@@ -116,11 +137,14 @@ public sealed class HeadsetController : IHeadphoneDevice
             },
             cancellationToken);
 
-    public Task SetCustomEqualizerAsync(int clearBass, IReadOnlyList<int> bands, CancellationToken cancellationToken)
+    public Task SetCustomEqualizerAsync(
+        int clearBass, IReadOnlyList<int> bands, EditPacing pacing, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(bands);
         var snapshot = bands.ToArray();
         return SendSettingAsync(
+            SettingGroup.Equalizer,
+            pacing,
             (link, ct) => link.SetCustomEqualizerAsync(clearBass, snapshot, ct),
             Setting.Equalizer,
             current => current with { Equalizer = new EqualizerState(EqualizerPreset.Manual, clearBass, snapshot) },
@@ -129,6 +153,8 @@ public sealed class HeadsetController : IHeadphoneDevice
 
     public Task SetDseeAsync(bool enabled, CancellationToken cancellationToken) =>
         SendSettingAsync(
+            SettingGroup.Dsee,
+            EditPacing.Immediate,
             (link, ct) => link.SetDseeAsync(enabled, ct),
             Setting.Dsee,
             current => current with { DseeEnabled = enabled },
@@ -264,11 +290,15 @@ public sealed class HeadsetController : IHeadphoneDevice
     };
 
     private Task SendSettingAsync(
+        SettingGroup group,
+        EditPacing pacing,
         Func<SonyV2Connection, CancellationToken, Task<long>> send,
         Setting setting,
         Func<DeviceState, DeviceState> apply,
         CancellationToken cancellationToken) =>
-        RunConnectedAsync(
+        EditAsync(
+            group,
+            pacing,
             async (link, ct) =>
             {
                 // Stamped even when the value does not change, so an older echo cannot undo this SET afterwards.
@@ -279,6 +309,41 @@ public sealed class HeadsetController : IHeadphoneDevice
                 }
             },
             cancellationToken);
+
+    private async Task EditAsync(
+        SettingGroup group,
+        EditPacing pacing,
+        Func<SonyV2Connection, CancellationToken, Task> send,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var edits = _edits[(int)group];
+        var version = edits.Begin();
+        try
+        {
+            if (pacing == EditPacing.Debounced)
+            {
+                await Task.Delay(EditDebounce, _timeProvider, cancellationToken).ConfigureAwait(false);
+            }
+
+            await RunConnectedAsync(
+                    async (link, ct) =>
+                    {
+                        // Checked when the edit's turn comes, so every older edit queued behind a slow operation is
+                        // skipped too.
+                        if (!edits.IsSuperseded(version))
+                        {
+                            await send(link, ct).ConfigureAwait(false);
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            edits.End();
+        }
+    }
 
     private Task RunConnectedAsync(
         Func<SonyV2Connection, CancellationToken, Task> operation,
@@ -525,6 +590,25 @@ public sealed class HeadsetController : IHeadphoneDevice
         Dsee,
         FirmwareVersion,
         Codec,
+    }
+
+    // Callers run on any thread, so the counters are atomic.
+    private sealed class EditTracker
+    {
+        private int _version;
+        private int _pending;
+
+        public bool IsPending => Volatile.Read(ref _pending) > 0;
+
+        public int Begin()
+        {
+            Interlocked.Increment(ref _pending);
+            return Interlocked.Increment(ref _version);
+        }
+
+        public bool IsSuperseded(int version) => Volatile.Read(ref _version) != version;
+
+        public void End() => Interlocked.Decrement(ref _pending);
     }
 
     // The connection lifecycle. Only Connected holds a link, so no operation can reach one in another state.

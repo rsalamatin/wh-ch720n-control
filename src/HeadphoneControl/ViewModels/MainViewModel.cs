@@ -7,8 +7,8 @@ using Microsoft.Extensions.Logging;
 
 namespace HeadphoneControl.ViewModels;
 
-// Device snapshots are the source of truth. While an edit of a setting group is pending, snapshots don't overwrite
-// that group; once its last edit completes or fails, the group is re-synced from the device.
+// Device snapshots are the source of truth. While the device has a pending edit of a setting group, snapshots don't
+// overwrite that group; once its last edit completes or fails, the group is re-synced from the device.
 public sealed partial class MainViewModel : ViewModelBase, IDisposable
 {
     private const int MinAmbientLevel = 1;
@@ -18,16 +18,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private readonly IHeadphoneDevice _device;
     private readonly ILogger _logger;
     private readonly Action<Action> _dispatch;
-    private readonly TimeSpan _sliderDebounce;
-    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
-
-    // One device call at a time: the headset handles a single request in flight.
-    private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly IAsyncRelayCommand[] _connectionCommands;
-
-    private readonly SettingGroup _noiseGroup = new();
-    private readonly SettingGroup _equalizerGroup = new();
-    private readonly SettingGroup _dseeGroup = new();
 
     // Setting sends are cancelled only by the Cancel button or Dispose, never because a newer edit started.
     private CancellationTokenSource _settingsCancellation = new();
@@ -45,21 +36,16 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         DiagnosticsViewModel diagnostics,
         ILogger<MainViewModel> logger,
         // Runs an action on the UI thread; device events can arrive on any thread.
-        Action<Action> dispatch,
-        TimeSpan sliderDebounce,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Action<Action> dispatch)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(diagnostics);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(dispatch);
-        ArgumentOutOfRangeException.ThrowIfLessThan(sliderDebounce, TimeSpan.Zero);
 
         _device = device;
         _logger = logger;
         _dispatch = dispatch;
-        _sliderDebounce = sliderDebounce;
-        _delay = delay ?? Task.Delay;
         Diagnostics = diagnostics;
         DeviceName = device.Name;
 
@@ -308,15 +294,13 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private Task ApplyNoiseControlAsync(SettingEdit<NoiseControlState> edit)
     {
         ArgumentNullException.ThrowIfNull(edit);
-        return SendSettingAsync(_noiseGroup, "Operation_NoiseControl", edit.Debounce, ct => _device.SetNoiseControlAsync(edit.Value, ct));
+        return SendSettingAsync("Operation_NoiseControl", ct => _device.SetNoiseControlAsync(edit.Value, edit.Pacing, ct));
     }
 
     [RelayCommand]
     private Task ApplyEqualizerPresetAsync(EqualizerPreset preset) =>
         SendSettingAsync(
-            _equalizerGroup,
             "Operation_EqualizerPreset",
-            debounce: false,
             ct => _device.SetEqualizerPresetAsync(preset, ct),
             // The device re-reads the EQ after a preset change; if that read fails the EQ card is disabled until Refresh.
             () => _device.State is { Connection: ConnectionStatus.Connected, Equalizer: null }
@@ -328,15 +312,13 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(edit);
         return SendSettingAsync(
-            _equalizerGroup,
             "Operation_CustomEqualizer",
-            edit.Debounce,
-            ct => _device.SetCustomEqualizerAsync(edit.Value.ClearBass, edit.Value.Bands, ct));
+            ct => _device.SetCustomEqualizerAsync(edit.Value.ClearBass, edit.Value.Bands, edit.Pacing, ct));
     }
 
     [RelayCommand]
     private Task ApplyDseeAsync(bool enabled) =>
-        SendSettingAsync(_dseeGroup, "Operation_Dsee", debounce: false, ct => _device.SetDseeAsync(enabled, ct));
+        SendSettingAsync("Operation_Dsee", ct => _device.SetDseeAsync(enabled, ct));
 
     partial void OnSelectedNoiseModeChanged(Choice<NoiseControlMode>? value)
     {
@@ -354,7 +336,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ApplyLocally(() => FocusOnVoice = EffectiveFocusOnVoice(value.Value));
         if (!_applyingState)
         {
-            ApplyNoiseControlCommand.Execute(new SettingEdit<NoiseControlState>(CurrentNoiseControl(value.Value), Debounce: false));
+            ApplyNoiseControlCommand.Execute(new SettingEdit<NoiseControlState>(CurrentNoiseControl(value.Value), EditPacing.Immediate));
         }
     }
 
@@ -366,7 +348,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         _lastFocusOnVoice = value;
-        ApplyNoiseControlCommand.Execute(new SettingEdit<NoiseControlState>(CurrentNoiseControl(mode.Value), Debounce: false));
+        ApplyNoiseControlCommand.Execute(new SettingEdit<NoiseControlState>(CurrentNoiseControl(mode.Value), EditPacing.Immediate));
     }
 
     partial void OnAmbientLevelChanged(int value)
@@ -377,15 +359,24 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         _lastAmbientLevel = value;
-        ApplyNoiseControlCommand.Execute(new SettingEdit<NoiseControlState>(CurrentNoiseControl(mode.Value), Debounce: true));
+        ApplyNoiseControlCommand.Execute(new SettingEdit<NoiseControlState>(CurrentNoiseControl(mode.Value), EditPacing.Debounced));
     }
 
     partial void OnSelectedPresetChanged(Choice<EqualizerPreset>? value)
     {
-        if (!_applyingState && value is not null)
+        if (_applyingState || value is null)
         {
-            ApplyEqualizerPresetCommand.Execute(value.Value);
+            return;
         }
+
+        // The device has no "Manual" preset command; Manual is a custom curve, so the curve on screen is sent as one.
+        if (value.Value == EqualizerPreset.Manual)
+        {
+            ApplyCustomEqualizerCommand.Execute(new SettingEdit<EqualizerState>(CurrentCurve(), EditPacing.Immediate));
+            return;
+        }
+
+        ApplyEqualizerPresetCommand.Execute(value.Value);
     }
 
     partial void OnIsDseeEnabledChanged(bool value)
@@ -405,9 +396,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         // Editing a band means a custom curve; reflect that locally without sending a preset command.
         ApplyLocally(() => SelectedPreset = Presets.First(p => p.Value == EqualizerPreset.Manual));
-        var curve = new EqualizerState(EqualizerPreset.Manual, ClearBass.Value, [.. Bands.Select(b => b.Value)]);
-        ApplyCustomEqualizerCommand.Execute(new SettingEdit<EqualizerState>(curve, Debounce: true));
+        ApplyCustomEqualizerCommand.Execute(new SettingEdit<EqualizerState>(CurrentCurve(), EditPacing.Debounced));
     }
+
+    private EqualizerState CurrentCurve() =>
+        new(EqualizerPreset.Manual, ClearBass.Value, [.. Bands.Select(b => b.Value)]);
 
     private void OnConnectCommandChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -443,7 +436,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         CodecText = state.Codec is { } codec ? DisplayNames.Of(codec) : Strings.UnknownValue;
 
         HasNoiseControl = state.NoiseControl is not null;
-        if (state.NoiseControl is { } noise && !_noiseGroup.HasPendingEdits)
+        if (state.NoiseControl is { } noise && !_device.HasPendingEdit(SettingGroup.NoiseControl))
         {
             SelectedNoiseMode = NoiseModes.First(m => m.Value == noise.Mode);
             // Outside ambient mode the device reports placeholders; keep the user's last ambient settings.
@@ -458,7 +451,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         HasEqualizer = state.Equalizer is not null;
-        if (state.Equalizer is { } equalizer && !_equalizerGroup.HasPendingEdits)
+        if (state.Equalizer is { } equalizer && !_device.HasPendingEdit(SettingGroup.Equalizer))
         {
             SelectedPreset = Presets.FirstOrDefault(p => p.Value == equalizer.Preset);
             ClearBass.Value = equalizer.ClearBass;
@@ -469,7 +462,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         HasDsee = state.DseeEnabled is not null;
-        if (!_dseeGroup.HasPendingEdits)
+        if (!_device.HasPendingEdit(SettingGroup.Dsee))
         {
             IsDseeEnabled = state.DseeEnabled ?? false;
         }
@@ -498,23 +491,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         IsBusy = Interlocked.Increment(ref _runningConnectionOperations) > 0;
         try
         {
-            await RunGuardedAsync(
-                operationKey,
-                async ct =>
-                {
-                    await _operationGate.WaitAsync(ct);
-                    try
-                    {
-                        await operation(ct);
-                        return true;
-                    }
-                    finally
-                    {
-                        _operationGate.Release();
-                    }
-                },
-                success,
-                cancellationToken);
+            await RunGuardedAsync(operationKey, operation, success, cancellationToken);
         }
         finally
         {
@@ -524,70 +501,40 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     private async Task SendSettingAsync(
-        SettingGroup group,
         string operationKey,
-        bool debounce,
         Func<CancellationToken, Task> send,
         Func<Status>? success = null)
     {
-        var version = group.BeginEdit();
         IsApplyingSettings = Interlocked.Increment(ref _runningSettingSends) > 0;
         try
         {
             await RunGuardedAsync(
                 operationKey,
-                async ct =>
-                {
-                    if (debounce)
-                    {
-                        await _delay(_sliderDebounce, ct);
-                    }
-
-                    await _operationGate.WaitAsync(ct);
-                    try
-                    {
-                        // A newer edit of this group carries the complete value; this one is obsolete.
-                        if (group.IsSuperseded(version))
-                        {
-                            return false;
-                        }
-
-                        await send(ct);
-                        return true;
-                    }
-                    finally
-                    {
-                        _operationGate.Release();
-                    }
-                },
+                send,
                 success ?? (() => Status.Info(Strings.Get("Status_Applied"))),
                 _settingsCancellation.Token);
         }
         finally
         {
             IsApplyingSettings = Interlocked.Decrement(ref _runningSettingSends) > 0;
-            if (group.EndEdit())
-            {
-                // Last edit of the group done (or failed): show what the device actually holds.
-                ApplyState(_device.State);
-            }
+
+            // Once the group's last edit is done (or failed), this shows what the device actually holds.
+            ApplyState(_device.State);
         }
     }
 
     private async Task RunGuardedAsync(
         string operationKey,
-        Func<CancellationToken, Task<bool>> operation,
+        Func<CancellationToken, Task> operation,
         Func<Status> success,
         CancellationToken cancellationToken)
     {
         var operationName = Strings.Get(operationKey);
         try
         {
-            if (await operation(cancellationToken))
-            {
-                SetStatus(success());
-                _logger.LogInformation("{Operation} succeeded", operationName);
-            }
+            await operation(cancellationToken);
+            SetStatus(success());
+            _logger.LogInformation("{Operation} succeeded", operationName);
         }
         catch (OperationCanceledException)
         {
@@ -621,23 +568,5 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private readonly record struct Status(string Message, StatusSeverity Severity)
     {
         public static Status Info(string message) => new(message, StatusSeverity.Info);
-    }
-
-    private sealed class SettingGroup
-    {
-        private int _version;
-        private int _pending;
-
-        public bool HasPendingEdits => Volatile.Read(ref _pending) > 0;
-
-        public int BeginEdit()
-        {
-            Interlocked.Increment(ref _pending);
-            return Interlocked.Increment(ref _version);
-        }
-
-        public bool IsSuperseded(int version) => Volatile.Read(ref _version) != version;
-
-        public bool EndEdit() => Interlocked.Decrement(ref _pending) == 0;
     }
 }

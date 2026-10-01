@@ -4,6 +4,10 @@ namespace HeadphoneControl.Protocol.Devices;
 /// What the UI binds to. Setters complete once the device has acknowledged the change; <see cref="State"/> is then updated.
 /// </summary>
 /// <remarks>
+/// <para>
+/// Operations run one at a time, in call order. Setters are coalesced per <see cref="SettingGroup"/>: a setter call
+/// that a newer call of the same group replaces before it is sent completes successfully without sending anything.
+/// </para>
 /// Every async member fails only with one of these types, so callers can catch exactly this set:
 /// <list type="bullet">
 /// <item><see cref="IOException"/> (incl. <c>TransportException</c>): the Bluetooth link failed or dropped.</item>
@@ -36,7 +40,13 @@ public interface IHeadphoneDevice : IAsyncDisposable
     /// <summary>Re-reads every supported setting from the device.</summary>
     Task RefreshAsync(CancellationToken cancellationToken);
 
-    Task SetNoiseControlAsync(NoiseControlState state, CancellationToken cancellationToken);
+    /// <summary>
+    /// True from the moment a setter of <paramref name="group"/> is called until its last such call completes. While
+    /// it is true, <see cref="State"/> may not yet show what was asked for, so a UI should keep showing the user's value.
+    /// </summary>
+    bool HasPendingEdit(SettingGroup group);
+
+    Task SetNoiseControlAsync(NoiseControlState state, EditPacing pacing, CancellationToken cancellationToken);
 
     /// <summary>
     /// Selects a preset, then re-reads the band curve the device assigned to it. If that read fails, the call still
@@ -45,7 +55,8 @@ public interface IHeadphoneDevice : IAsyncDisposable
     Task SetEqualizerPresetAsync(EqualizerPreset preset, CancellationToken cancellationToken);
 
     /// <summary>Switches to <see cref="EqualizerPreset.Manual"/> with the given levels (each -10..10, 5 bands).</summary>
-    Task SetCustomEqualizerAsync(int clearBass, IReadOnlyList<int> bands, CancellationToken cancellationToken);
+    Task SetCustomEqualizerAsync(
+        int clearBass, IReadOnlyList<int> bands, EditPacing pacing, CancellationToken cancellationToken);
 
     Task SetDseeAsync(bool enabled, CancellationToken cancellationToken);
 }

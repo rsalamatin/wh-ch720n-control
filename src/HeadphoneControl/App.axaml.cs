@@ -21,7 +21,6 @@ public partial class App : Application
     private const string VerboseSwitch = "--verbose";
     private const string HeadsetModel = "WH-CH720N";
     private static readonly TimeSpan SimulatedLatency = TimeSpan.FromMilliseconds(150);
-    private static readonly TimeSpan SliderDebounce = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan DeviceShutdownTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan CrashFlushTimeout = TimeSpan.FromSeconds(2);
 
@@ -62,8 +61,7 @@ public partial class App : Application
                 _device,
                 new DiagnosticsViewModel(journal, dispatch),
                 _loggerFactory.CreateLogger<MainViewModel>(),
-                dispatch,
-                SliderDebounce);
+                dispatch);
 
             var window = new MainWindow { DataContext = _mainViewModel };
             window.Closing += OnMainWindowClosing;

@@ -36,7 +36,7 @@ public class MainViewModelTests
         var device = Substitute.For<IHeadphoneDevice>();
         device.Name.Returns("WH-CH720N");
         device.State.Returns(_ => current);
-        device.SetNoiseControlAsync(Arg.Any<NoiseControlState>(), Arg.Any<CancellationToken>())
+        device.SetNoiseControlAsync(Arg.Any<NoiseControlState>(), Arg.Any<EditPacing>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
                 current = current with { NoiseControl = call.Arg<NoiseControlState>() };
@@ -48,17 +48,14 @@ public class MainViewModelTests
     private static MainViewModel CreateViewModel(
         IHeadphoneDevice device,
         Action<Action>? dispatch = null,
-        ILogger<MainViewModel>? logger = null,
-        ManualDelay? delay = null)
+        ILogger<MainViewModel>? logger = null)
     {
         var inline = dispatch ?? (action => action());
         return new MainViewModel(
             device,
             new DiagnosticsViewModel(new DiagnosticsJournal(), inline),
             logger ?? NullLogger<MainViewModel>.Instance,
-            inline,
-            TimeSpan.FromMilliseconds(300),
-            delay is null ? (_, _) => Task.CompletedTask : delay.DelayAsync);
+            inline);
     }
 
     [Test]
@@ -151,30 +148,11 @@ public class MainViewModelTests
     }
 
     [Test]
-    public async Task WhenStateArrivesWhileDebouncePendingThenPendingValueIsSent()
+    public async Task WhenStateArrivesWhileNoiseEditIsPendingThenSliderKeepsUserValue()
     {
         var device = CreateDevice(ConnectedState());
-        var delay = new ManualDelay();
-        using var viewModel = CreateViewModel(device, delay: delay);
-        viewModel.AmbientLevel = 15;
-        var older = ConnectedState() with { NoiseControl = new NoiseControlState(NoiseControlMode.Ambient, false, 12) };
-        device.State.Returns(older);
-        device.StateChanged += Raise.Event<EventHandler<DeviceState>>(device, older);
-
-        delay.ElapseAll();
-        await viewModel.ApplyNoiseControlCommand.ExecutionTask!;
-
-        await device.Received(1).SetNoiseControlAsync(
-            new NoiseControlState(NoiseControlMode.Ambient, FocusOnVoice: false, AmbientLevel: 15),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Test]
-    public async Task WhenStateArrivesWhileDebouncePendingThenSliderKeepsUserValue()
-    {
-        var device = CreateDevice(ConnectedState());
-        var delay = new ManualDelay();
-        using var viewModel = CreateViewModel(device, delay: delay);
+        device.HasPendingEdit(SettingGroup.NoiseControl).Returns(true);
+        using var viewModel = CreateViewModel(device);
         viewModel.AmbientLevel = 15;
         var older = ConnectedState() with { NoiseControl = new NoiseControlState(NoiseControlMode.Ambient, false, 12) };
         device.State.Returns(older);
@@ -182,42 +160,86 @@ public class MainViewModelTests
         device.StateChanged += Raise.Event<EventHandler<DeviceState>>(device, older);
 
         await Assert.That(viewModel.AmbientLevel).IsEqualTo(15);
-        delay.ElapseAll();
     }
 
     [Test]
-    public async Task WhenSliderMovesRapidlyThenOneSendIsMade()
+    public async Task WhenStateArrivesWhileOnlyAnotherGroupIsPendingThenSliderShowsDeviceValue()
     {
         var device = CreateDevice(ConnectedState());
-        var delay = new ManualDelay();
-        using var viewModel = CreateViewModel(device, delay: delay);
-        viewModel.Bands[1].Value = 1;
-        viewModel.Bands[1].Value = 2;
-        viewModel.Bands[1].Value = 3;
+        using var viewModel = CreateViewModel(device);
+        viewModel.AmbientLevel = 15;
+        device.HasPendingEdit(SettingGroup.Equalizer).Returns(true);
+        var older = ConnectedState() with { NoiseControl = new NoiseControlState(NoiseControlMode.Ambient, false, 12) };
+        device.State.Returns(older);
 
-        delay.ElapseAll();
-        await viewModel.ApplyCustomEqualizerCommand.ExecutionTask!;
+        device.StateChanged += Raise.Event<EventHandler<DeviceState>>(device, older);
 
-        await device.Received(1).SetCustomEqualizerAsync(Arg.Any<int>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<CancellationToken>());
+        await Assert.That(viewModel.AmbientLevel).IsEqualTo(12);
     }
 
     [Test]
-    public async Task WhenSliderMovesRapidlyThenLastValueIsSent()
+    public async Task WhenUserMovesAmbientSliderThenTheEditIsDebounced()
     {
         var device = CreateDevice(ConnectedState());
-        var delay = new ManualDelay();
-        using var viewModel = CreateViewModel(device, delay: delay);
-        viewModel.Bands[1].Value = 1;
-        viewModel.Bands[1].Value = 2;
-        viewModel.Bands[1].Value = 3;
+        using var viewModel = CreateViewModel(device);
 
-        delay.ElapseAll();
-        await viewModel.ApplyCustomEqualizerCommand.ExecutionTask!;
+        viewModel.AmbientLevel = 15;
+
+        await device.Received(1).SetNoiseControlAsync(
+            Arg.Any<NoiseControlState>(), EditPacing.Debounced, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task WhenUserMovesBandThenTheEditIsDebounced()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+
+        viewModel.Bands[1].Value = 3;
 
         await device.Received(1).SetCustomEqualizerAsync(
-            0,
-            Arg.Is<IReadOnlyList<int>>(bands => bands.SequenceEqual(new[] { 0, 3, 0, 0, 0 })),
+            Arg.Any<int>(), Arg.Any<IReadOnlyList<int>>(), EditPacing.Debounced, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task WhenUserSelectsNoiseModeThenTheEditIsImmediate()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+
+        viewModel.SelectedNoiseMode = viewModel.NoiseModes.Single(m => m.Value == NoiseControlMode.Off);
+
+        await device.Received(1).SetNoiseControlAsync(
+            Arg.Any<NoiseControlState>(), EditPacing.Immediate, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task WhenUserSelectsManualPresetThenTheShownCurveIsSentAsCustomEqualizer()
+    {
+        var device = CreateDevice(ConnectedState() with
+        {
+            Equalizer = new EqualizerState(EqualizerPreset.BassBoost, 1, [6, 4, 0, 0, 0]),
+        });
+        using var viewModel = CreateViewModel(device);
+
+        viewModel.SelectedPreset = viewModel.Presets.Single(p => p.Value == EqualizerPreset.Manual);
+
+        await device.Received(1).SetCustomEqualizerAsync(
+            1,
+            Arg.Is<IReadOnlyList<int>>(bands => bands.SequenceEqual(new[] { 6, 4, 0, 0, 0 })),
+            EditPacing.Immediate,
             Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task WhenUserSelectsManualPresetThenNoPresetCommandIsSent()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+
+        viewModel.SelectedPreset = viewModel.Presets.Single(p => p.Value == EqualizerPreset.Manual);
+
+        await device.DidNotReceive().SetEqualizerPresetAsync(Arg.Any<EqualizerPreset>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -308,13 +330,11 @@ public class MainViewModelTests
     public async Task WhenDebouncedSendFailsThenStatusShowsError()
     {
         var device = CreateDevice(ConnectedState());
-        device.SetNoiseControlAsync(Arg.Any<NoiseControlState>(), Arg.Any<CancellationToken>())
+        device.SetNoiseControlAsync(Arg.Any<NoiseControlState>(), Arg.Any<EditPacing>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new TimeoutException("no ACK for level"));
-        var delay = new ManualDelay();
-        using var viewModel = CreateViewModel(device, delay: delay);
-        viewModel.AmbientLevel = 18;
+        using var viewModel = CreateViewModel(device);
 
-        delay.ElapseAll();
+        viewModel.AmbientLevel = 18;
         await viewModel.ApplyNoiseControlCommand.ExecutionTask!;
 
         await Assert.That(viewModel.StatusMessage).Contains("no ACK for level");
@@ -324,13 +344,11 @@ public class MainViewModelTests
     public async Task WhenDebouncedSendFailsThenSliderRevertsToDeviceValue()
     {
         var device = CreateDevice(ConnectedState());
-        device.SetNoiseControlAsync(Arg.Any<NoiseControlState>(), Arg.Any<CancellationToken>())
+        device.SetNoiseControlAsync(Arg.Any<NoiseControlState>(), Arg.Any<EditPacing>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new TimeoutException("no ACK for level"));
-        var delay = new ManualDelay();
-        using var viewModel = CreateViewModel(device, delay: delay);
-        viewModel.AmbientLevel = 18;
+        using var viewModel = CreateViewModel(device);
 
-        delay.ElapseAll();
+        viewModel.AmbientLevel = 18;
         await viewModel.ApplyNoiseControlCommand.ExecutionTask!;
 
         await Assert.That(viewModel.AmbientLevel).IsEqualTo(7);
@@ -360,7 +378,7 @@ public class MainViewModelTests
 
         viewModel.SelectedNoiseMode = viewModel.NoiseModes.Single(m => m.Value == NoiseControlMode.Ambient);
 
-        await device.Received(1).SetNoiseControlAsync(ambientWithVoice, Arg.Any<CancellationToken>());
+        await device.Received(1).SetNoiseControlAsync(ambientWithVoice, Arg.Any<EditPacing>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -403,7 +421,7 @@ public class MainViewModelTests
 
         await device.Received(1).SetNoiseControlAsync(
             new NoiseControlState(NoiseControlMode.Ambient, FocusOnVoice: true, AmbientLevel: 7),
-            Arg.Any<CancellationToken>());
+            Arg.Any<EditPacing>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -415,7 +433,7 @@ public class MainViewModelTests
 
         viewModel.SelectedNoiseMode = viewModel.NoiseModes.Single(m => m.Value == NoiseControlMode.NoiseCancelling);
 
-        await device.Received(1).SetNoiseControlAsync(Arg.Any<NoiseControlState>(), Arg.Any<CancellationToken>());
+        await device.Received(1).SetNoiseControlAsync(Arg.Any<NoiseControlState>(), Arg.Any<EditPacing>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -602,20 +620,19 @@ public class MainViewModelTests
         await device.Received(1).SetCustomEqualizerAsync(
             0,
             Arg.Is<IReadOnlyList<int>>(bands => bands.SequenceEqual(new[] { 0, 0, 4, 0, 0 })),
-            Arg.Any<CancellationToken>());
+            Arg.Any<EditPacing>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
     public async Task WhenUserMovesBandThenPresetShowsManual()
     {
         var device = CreateDevice(ConnectedState());
-        var delay = new ManualDelay();
-        using var viewModel = CreateViewModel(device, delay: delay);
+        device.HasPendingEdit(SettingGroup.Equalizer).Returns(true);
+        using var viewModel = CreateViewModel(device);
 
         viewModel.Bands[0].Value = -3;
 
         await Assert.That(viewModel.SelectedPreset?.Value).IsEqualTo(EqualizerPreset.Manual);
-        delay.ElapseAll();
     }
 
     [Test]
@@ -640,7 +657,7 @@ public class MainViewModelTests
 
         await device.Received(1).SetNoiseControlAsync(
             new NoiseControlState(NoiseControlMode.Ambient, FocusOnVoice: false, AmbientLevel: 7),
-            Arg.Any<CancellationToken>());
+            Arg.Any<EditPacing>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -653,7 +670,7 @@ public class MainViewModelTests
 
         await device.Received(1).SetNoiseControlAsync(
             new NoiseControlState(NoiseControlMode.Ambient, FocusOnVoice: false, AmbientLevel: 15),
-            Arg.Any<CancellationToken>());
+            Arg.Any<EditPacing>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -912,7 +929,7 @@ public class MainViewModelTests
 
         viewModel.SelectedNoiseMode = null;
 
-        await device.DidNotReceive().SetNoiseControlAsync(Arg.Any<NoiseControlState>(), Arg.Any<CancellationToken>());
+        await device.DidNotReceive().SetNoiseControlAsync(Arg.Any<NoiseControlState>(), Arg.Any<EditPacing>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
