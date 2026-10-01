@@ -1,3 +1,4 @@
+using System.IO.MemoryMappedFiles;
 using HeadphoneControl.Diagnostics;
 using Microsoft.Extensions.Logging;
 
@@ -5,7 +6,8 @@ namespace HeadphoneControl.Tests.Diagnostics;
 
 public sealed class JournalLoggerProviderTests : IDisposable
 {
-    private const int MaxFileBytes = 10 * 1024 * 1024;
+    // Small so each test writes little; the production cap is JournalLoggerProvider.DefaultMaxFileBytes.
+    private const int MaxFileBytes = 64 * 1024;
 
     private readonly string _directory = Directory.CreateDirectory(
         Path.Combine(Path.GetTempPath(), "HeadphoneControl.Tests", Guid.NewGuid().ToString("N"))).FullName;
@@ -17,7 +19,7 @@ public sealed class JournalLoggerProviderTests : IDisposable
     [Test]
     public async Task WhenLineIsLoggedThenItIsAppendedToTheFile()
     {
-        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        var provider = CreateProvider(new DiagnosticsJournal());
         provider.CreateLogger("Test.Category").LogInformation("hello file");
 
         await provider.DisposeAsync();
@@ -28,7 +30,7 @@ public sealed class JournalLoggerProviderTests : IDisposable
     [Test]
     public async Task WhenNoLogFileExistsThenANewFileIsCreated()
     {
-        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        var provider = CreateProvider(new DiagnosticsJournal());
         provider.CreateLogger("Test").LogInformation("first line");
 
         await provider.DisposeAsync();
@@ -39,7 +41,7 @@ public sealed class JournalLoggerProviderTests : IDisposable
     [Test]
     public async Task WhenFlushedThenLoggedLineIsAlreadyOnDisk()
     {
-        await using var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        await using var provider = CreateProvider(new DiagnosticsJournal());
         provider.CreateLogger("Test").LogCritical("crash");
 
         provider.Flush(TimeSpan.FromSeconds(5));
@@ -52,7 +54,7 @@ public sealed class JournalLoggerProviderTests : IDisposable
     [Test]
     public async Task WhenMoreThanTheLimitIsLoggedThenTheFileStaysWithinTheLimit()
     {
-        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        var provider = CreateProvider(new DiagnosticsJournal());
 
         LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
         await provider.DisposeAsync();
@@ -63,7 +65,7 @@ public sealed class JournalLoggerProviderTests : IDisposable
     [Test]
     public async Task WhenTheFileIsFullThenTheOlderLinesAreDropped()
     {
-        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        var provider = CreateProvider(new DiagnosticsJournal());
         provider.CreateLogger("Test").LogInformation("oldest line");
 
         LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
@@ -75,7 +77,7 @@ public sealed class JournalLoggerProviderTests : IDisposable
     [Test]
     public async Task WhenTheFileIsFullThenTheNewestLineIsInTheLogFile()
     {
-        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        var provider = CreateProvider(new DiagnosticsJournal());
         LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
 
         provider.CreateLogger("Test").LogInformation("newest line");
@@ -87,7 +89,7 @@ public sealed class JournalLoggerProviderTests : IDisposable
     [Test]
     public async Task WhenTheFileIsFullThenNoSecondFileIsCreated()
     {
-        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        var provider = CreateProvider(new DiagnosticsJournal());
 
         LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
         await provider.DisposeAsync();
@@ -98,21 +100,69 @@ public sealed class JournalLoggerProviderTests : IDisposable
     [Test]
     public async Task WhenAViewerHoldsTheFileOpenThenTheFullFileIsStillCleared()
     {
-        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        var provider = CreateProvider(new DiagnosticsJournal());
+        provider.CreateLogger("Test").LogInformation("oldest line");
         provider.Flush(TimeSpan.FromSeconds(5));
-        await using var viewer = new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        await using var viewer = new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
         LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
         await provider.DisposeAsync();
 
-        await Assert.That(new FileInfo(LogPath).Length).IsLessThanOrEqualTo(MaxFileBytes);
+        await Assert.That(await ReadSharedAsync()).DoesNotContain("oldest line");
+    }
+
+    [Test]
+    public async Task WhenTheFileCannotBeClearedThenJournalReportsIt()
+    {
+        var journal = new DiagnosticsJournal();
+        var provider = CreateProvider(journal);
+        provider.CreateLogger("Test").LogInformation("mapped");
+        provider.Flush(TimeSpan.FromSeconds(5));
+        using var mapping = MapLogFile();
+
+        LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
+        await provider.DisposeAsync();
+
+        await Assert.That(journal.Snapshot().Any(line => line.Contains("could not be cleared", StringComparison.Ordinal))).IsTrue();
+    }
+
+    [Test]
+    public async Task WhenTheFileCannotBeClearedThenLoggingContinuesInTheLogFile()
+    {
+        var provider = CreateProvider(new DiagnosticsJournal());
+        provider.CreateLogger("Test").LogInformation("mapped");
+        provider.Flush(TimeSpan.FromSeconds(5));
+        using var mapping = MapLogFile();
+        LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
+
+        provider.CreateLogger("Test").LogInformation("after failed clear");
+        await provider.DisposeAsync();
+
+        await Assert.That(await ReadSharedAsync()).Contains("after failed clear");
+    }
+
+    [Test]
+    public async Task WhenAnotherInstanceClearsTheSharedFileThenNoZeroFilledGapIsLeft()
+    {
+        var running = CreateProvider(new DiagnosticsJournal());
+        LogPadding(running, totalChars: MaxFileBytes - 4000);
+        running.Flush(TimeSpan.FromSeconds(5));
+        var started = CreateProvider(new DiagnosticsJournal());
+
+        LogPadding(started, totalChars: 10_000);
+        started.Flush(TimeSpan.FromSeconds(5));
+        running.CreateLogger("Test").LogInformation("running instance after the clear");
+        await running.DisposeAsync();
+        await started.DisposeAsync();
+
+        await Assert.That(await File.ReadAllTextAsync(LogPath)).DoesNotContain('\0');
     }
 
     [Test]
     public async Task WhenExistingFileIsAtTheLimitThenItIsClearedBeforeTheFirstLine()
     {
         await File.WriteAllTextAsync(LogPath, new string('x', MaxFileBytes));
-        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        var provider = CreateProvider(new DiagnosticsJournal());
 
         provider.CreateLogger("Test").LogInformation("after restart");
         await provider.DisposeAsync();
@@ -123,7 +173,7 @@ public sealed class JournalLoggerProviderTests : IDisposable
     [Test]
     public async Task WhenASingleLineExceedsTheLimitThenTheFileStaysWithinTheLimit()
     {
-        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        var provider = CreateProvider(new DiagnosticsJournal());
 
         provider.CreateLogger("Test").LogInformation(new string('x', MaxFileBytes * 2));
         await provider.DisposeAsync();
@@ -134,7 +184,7 @@ public sealed class JournalLoggerProviderTests : IDisposable
     [Test]
     public async Task WhenASingleLineExceedsTheLimitThenItsStartIsKept()
     {
-        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        var provider = CreateProvider(new DiagnosticsJournal());
 
         provider.CreateLogger("Test").LogInformation("start of huge line " + new string('x', MaxFileBytes * 2));
         await provider.DisposeAsync();
@@ -168,11 +218,30 @@ public sealed class JournalLoggerProviderTests : IDisposable
         await Assert.That(journal.Snapshot().Any(line => line.Contains("still shown", StringComparison.Ordinal))).IsTrue();
     }
 
+    private JournalLoggerProvider CreateProvider(DiagnosticsJournal journal) =>
+        new(journal, LogPath, maxFileBytes: MaxFileBytes);
+
+    // Windows refuses to truncate a file while another process has it mapped (ERROR_USER_MAPPED_FILE).
+    private MemoryMappedFile MapLogFile() =>
+        MemoryMappedFile.CreateFromFile(
+            new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite),
+            mapName: null,
+            capacity: 0,
+            MemoryMappedFileAccess.Read,
+            HandleInheritability.None,
+            leaveOpen: false);
+
+    private async Task<string> ReadSharedAsync()
+    {
+        await using var stream = new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        return await reader.ReadToEndAsync();
+    }
+
     private static void LogPadding(JournalLoggerProvider provider, int totalChars)
     {
         var logger = provider.CreateLogger("Test");
-        // Large lines keep the count far below the provider's 10,000-line queue, so none are dropped.
-        var padding = new string('p', 64 * 1024);
+        var padding = new string('p', 1000);
         for (var written = 0; written < totalChars; written += padding.Length)
         {
             logger.LogInformation("{Padding}", padding);

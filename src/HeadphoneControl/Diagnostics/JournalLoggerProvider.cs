@@ -12,22 +12,32 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
     // Bounded so a stalled disk can't grow memory without limit; the oldest unwritten lines go first.
     private const int MaxPendingLines = 10_000;
     // A full file is cleared and logging starts over in it; no second file is kept.
-    private const int MaxFileBytes = 10 * 1024 * 1024;
+    public const int DefaultMaxFileBytes = 10 * 1024 * 1024;
     private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(2);
     private static readonly UTF8Encoding LogEncoding = new(false);
 
     private readonly DiagnosticsJournal _journal;
     private readonly TimeProvider _timeProvider;
+    private readonly int _maxFileBytes;
     private readonly Channel<PendingItem> _pending;
     private readonly Task _writerTask;
     private int _disposed;
 
+    // Touched only by the file writer task.
+    private bool _clearFailureReported;
+
     // A null logFilePath logs to the journal only.
-    public JournalLoggerProvider(DiagnosticsJournal journal, string? logFilePath, TimeProvider? timeProvider = null)
+    public JournalLoggerProvider(
+        DiagnosticsJournal journal,
+        string? logFilePath,
+        TimeProvider? timeProvider = null,
+        int maxFileBytes = DefaultMaxFileBytes)
     {
         ArgumentNullException.ThrowIfNull(journal);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxFileBytes, 1024);
         _journal = journal;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _maxFileBytes = maxFileBytes;
         _pending = Channel.CreateBounded<PendingItem>(new BoundedChannelOptions(MaxPendingLines)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
@@ -110,22 +120,23 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
             try
             {
                 var newLineBytes = LogEncoding.GetByteCount(writer.NewLine);
-                var fileBytes = writer.BaseStream.Length;
                 while (await _pending.Reader.WaitToReadAsync().ConfigureAwait(false))
                 {
                     var flushRequests = new List<TaskCompletionSource>();
                     try
                     {
+                        // Another app instance may have written to or cleared the shared file since the last batch;
+                        // writing at a stale offset past a cleared end would leave a zero-filled gap.
+                        var fileBytes = writer.BaseStream.Seek(0, SeekOrigin.End);
                         while (_pending.Reader.TryRead(out var item))
                         {
                             if (item.Line is not null)
                             {
                                 var line = FitToEmptyFile(item.Line, newLineBytes);
                                 var lineBytes = LogEncoding.GetByteCount(line) + newLineBytes;
-                                if (fileBytes > 0 && fileBytes + lineBytes > MaxFileBytes)
+                                if (fileBytes > 0 && fileBytes + lineBytes > _maxFileBytes)
                                 {
-                                    await ClearAsync(writer).ConfigureAwait(false);
-                                    fileBytes = 0;
+                                    fileBytes = await ClearAsync(writer, path).ConfigureAwait(false);
                                 }
 
                                 await writer.WriteLineAsync(line).ConfigureAwait(false);
@@ -169,19 +180,36 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
         return new StreamWriter(stream, LogEncoding);
     }
 
-    // Truncates through the open handle, so it works while a log viewer has the file open.
-    private static async Task ClearAsync(StreamWriter writer)
+    // Truncates through the open handle, so a log viewer holding the file open doesn't block it. Truncation fails
+    // while another process has the file memory-mapped; logging then keeps appending and the next batch retries.
+    // Returns the byte count to continue the current batch from.
+    private async Task<long> ClearAsync(StreamWriter writer, string path)
     {
         await writer.FlushAsync().ConfigureAwait(false);
-        writer.BaseStream.SetLength(0);
+        try
+        {
+            writer.BaseStream.SetLength(0);
+        }
+        catch (IOException ex)
+        {
+            if (!_clearFailureReported)
+            {
+                _clearFailureReported = true;
+                _journal.Append(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"[WRN] Log file '{path}' could not be cleared, so it grows past the size cap: {ex.Message}"));
+            }
+        }
+
+        return 0;
     }
 
     // UTF-8 takes at most 3 bytes per UTF-16 char, so the cut line always fits an empty file;
     // an oversized ASCII line therefore keeps only about a third of the cap.
-    private static string FitToEmptyFile(string line, int newLineBytes)
+    private string FitToEmptyFile(string line, int newLineBytes)
     {
-        var maxChars = (MaxFileBytes - newLineBytes) / 3;
-        if (line.Length <= maxChars || LogEncoding.GetByteCount(line) + newLineBytes <= MaxFileBytes)
+        var maxChars = (_maxFileBytes - newLineBytes) / 3;
+        if (line.Length <= maxChars || LogEncoding.GetByteCount(line) + newLineBytes <= _maxFileBytes)
         {
             return line;
         }
