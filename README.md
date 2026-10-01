@@ -16,7 +16,7 @@ It is built with C# / .NET 10, Avalonia UI and CommunityToolkit.Mvvm.
   - After a preset change, the app reads back the band curve the headset chose.
 - **DSEE** upscaling on/off.
 - **Live updates:** changes made with the headset's own buttons show up in the app immediately.
-- **Diagnostics:** a panel in the app, also written to `headphone-control.log` beside the executable.
+- **Diagnostics:** a panel in the app, also written to `headphone-control.log` beside the executable. The file is capped at 1 MB; when it is full it moves to `headphone-control.log.1` (replacing the older one) and a fresh file starts.
 
 ## Requirements
 

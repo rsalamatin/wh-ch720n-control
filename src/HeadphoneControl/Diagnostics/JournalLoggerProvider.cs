@@ -11,13 +11,19 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
 {
     // Bounded so a stalled disk can't grow memory without limit; the oldest unwritten lines go first.
     private const int MaxPendingLines = 10_000;
+    // A full file moves to "<name>.1" (replacing the older one), so at most two files are kept.
+    private const int MaxFileBytes = 1024 * 1024;
     private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(2);
+    private static readonly UTF8Encoding LogEncoding = new(false);
 
     private readonly DiagnosticsJournal _journal;
     private readonly TimeProvider _timeProvider;
     private readonly Channel<PendingItem> _pending;
     private readonly Task _writerTask;
     private int _disposed;
+
+    // Touched only by the file writer task.
+    private bool _rollFailureReported;
 
     // A null logFilePath logs to the journal only.
     public JournalLoggerProvider(DiagnosticsJournal journal, string? logFilePath, TimeProvider? timeProvider = null)
@@ -103,27 +109,51 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
     {
         try
         {
-            var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite, 4096, useAsync: true);
-            await using var writer = new StreamWriter(stream, new UTF8Encoding(false));
-            while (await _pending.Reader.WaitToReadAsync().ConfigureAwait(false))
+            var writer = OpenLogFile(path);
+            try
             {
-                var flushRequests = new List<TaskCompletionSource>();
-                while (_pending.Reader.TryRead(out var item))
+                var newLineBytes = LogEncoding.GetByteCount(writer.NewLine);
+                var fileBytes = writer.BaseStream.Length;
+                while (await _pending.Reader.WaitToReadAsync().ConfigureAwait(false))
                 {
-                    if (item.Line is not null)
+                    var flushRequests = new List<TaskCompletionSource>();
+                    try
                     {
-                        await writer.WriteLineAsync(item.Line).ConfigureAwait(false);
-                    }
+                        while (_pending.Reader.TryRead(out var item))
+                        {
+                            if (item.Line is not null)
+                            {
+                                var line = FitToEmptyFile(item.Line, newLineBytes);
+                                var lineBytes = LogEncoding.GetByteCount(line) + newLineBytes;
+                                if (fileBytes > 0 && fileBytes + lineBytes > MaxFileBytes)
+                                {
+                                    writer = await RollAsync(writer, path).ConfigureAwait(false);
+                                    fileBytes = 0;
+                                }
 
-                    if (item.Flushed is not null)
+                                await writer.WriteLineAsync(line).ConfigureAwait(false);
+                                fileBytes += lineBytes;
+                            }
+
+                            if (item.Flushed is not null)
+                            {
+                                flushRequests.Add(item.Flushed);
+                            }
+                        }
+
+                        // Flush per batch so the file is useful even if the process is killed.
+                        await writer.FlushAsync().ConfigureAwait(false);
+                    }
+                    finally
                     {
-                        flushRequests.Add(item.Flushed);
+                        // Also on failure, so a crash handler's Flush doesn't wait out its timeout.
+                        flushRequests.ForEach(request => request.TrySetResult());
                     }
                 }
-
-                // Flush per batch so the file is useful even if the process is killed.
-                await writer.FlushAsync().ConfigureAwait(false);
-                flushRequests.ForEach(request => request.TrySetResult());
+            }
+            finally
+            {
+                await writer.DisposeAsync().ConfigureAwait(false);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -132,6 +162,45 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
             _journal.Append(string.Create(CultureInfo.InvariantCulture, $"[ERR] Log file '{path}' is not writable: {ex.Message}"));
             await DrainWithoutFileAsync().ConfigureAwait(false);
         }
+    }
+
+    private static StreamWriter OpenLogFile(string path) =>
+        new(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite, 4096, useAsync: true), LogEncoding);
+
+    // The move fails while another process (a second instance, a log viewer) holds either file without
+    // delete sharing. Logging then keeps appending to the same file and the caller retries after another MaxFileBytes.
+    private async Task<StreamWriter> RollAsync(StreamWriter writer, string path)
+    {
+        await writer.DisposeAsync().ConfigureAwait(false);
+        try
+        {
+            File.Move(path, path + ".1", overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            if (!_rollFailureReported)
+            {
+                _rollFailureReported = true;
+                _journal.Append(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"[WRN] Log file '{path}' could not be rolled over to '{path}.1', so it grows past the size cap: {ex.Message}"));
+            }
+        }
+
+        return OpenLogFile(path);
+    }
+
+    // UTF-8 takes at most 3 bytes per UTF-16 char, so the cut line always fits an empty file;
+    // an oversized ASCII line therefore keeps only about a third of the cap.
+    private static string FitToEmptyFile(string line, int newLineBytes)
+    {
+        var maxChars = (MaxFileBytes - newLineBytes) / 3;
+        if (line.Length <= maxChars || LogEncoding.GetByteCount(line) + newLineBytes <= MaxFileBytes)
+        {
+            return line;
+        }
+
+        return char.IsHighSurrogate(line[maxChars - 1]) ? line[..(maxChars - 1)] : line[..maxChars];
     }
 
     private static string ShortLevel(LogLevel level) => level switch

@@ -1,30 +1,15 @@
 # Architecture refactor plan
 
-Agreed on 2026-09-29. **Steps 1 and 2a are done** and merged (2026-09-30, 484 tests).
+Agreed on 2026-09-29. **All steps are done** (2026-10-01): 1 and 2a on 2026-09-30; 2b, 4 and 3 on 2026-10-01. Every step was reviewed and its fixes applied.
 
-**Where to resume (end of 2026-09-30):**
-- **Step 2b:** in progress, branch `refactor/step2b`, worktree `D:\code\720hHf_1-step2b`.
-  - Commits `0233576` (slim `ITransport`) and `78535c0` (`HeadsetController`) are reviewed. No must-fix, but S1/S2 need fixing.
-  - **S1/S2:** queuing notifications behind the running operation lets an older frame override a newer publish. A late Bright `0x57` can override a fresh BassBoost re-read, and an older NC echo can override a newer SET.
-  - **Fix in progress:** receive-order stamps. The session numbers every received frame, and the controller applies a notification only to fields where it is newer. Uncommitted work may be in the worktree (`Received.cs`, `ReceivedPayload.cs`, session and connection edits).
-  - **Also in that round:**
-    - a test that the actor survives a throwing handler;
-    - an already-cancelled token throws before any state change;
-    - drop the duplicate "Link to {Name} lost" warning;
-    - make `Operation` a class and guard the final Publish;
-    - fix the test comment and the `new FakeTransport()` parentheses;
-    - tests for the Connecting→Connected sequence and for a new controller starting Disconnected.
-  - Then re-review and merge into main.
-- **Step 4:** done and reviewed. Branch `refactor/step4`, worktree `D:\code\720hHf_1-step4`, commits `b0ade2e` and `1b083f3`. Merge it **after** 2b. At merge:
-  - remove `SimulatedTransport.IsConnected`/`ConnectAsync`;
-  - use `HeadsetController` in `App.CreateDevice`'s simulated branch and in the `CreateDevice` test helper;
-  - reword `CLAUDE.md:10` (Simulation);
-  - smoke-connect in `--simulated`.
-- **Step 3** (thin `MainViewModel`, including the Manual-preset bug below): starts after both merges.
-- **Docs to update at merge:**
-  - `development-status.md:27` and `:74` still describe `HeadphoneDevice` and the old `ReferenceEquals` rule;
-  - update the test counts;
-  - move the backlog candidates below into `backlog.md`.
+**What was done on 2026-10-01:**
+- **Step 2b:** `HeadsetController` (Core) replaces `HeadphoneDevice`; `ITransport` is a connected stream.
+  - **S1/S2 fix:** receive-order stamps. The session numbers every received frame (`ReceivedPayload.Ordinal`); replies and ACKs return it (`Received<T>`), and `HeadsetController.Claim` applies a value only if its frame is newer than the one that last set that setting. A notification queued behind an operation can no longer undo a newer SET or a preset re-read.
+  - A throwing `StateChanged` handler is logged and never fails an operation. `EqualizerState` compares band values.
+- **Step 4:** merged; `--simulated` runs the byte-level simulator behind `HeadsetController`.
+- **Step 3:** `HeadsetController` owns debounce (`EditPacing`), coalescing per `SettingGroup` (a replaced edit completes as `EditOutcome.Superseded` and sends nothing) and `HasPendingEdit`, with `StateChanged` raised when a group's last pending edit ends. `MainViewModel` keeps binding, strings and status text. Picking Manual sends the curve on screen as a custom equalizer.
+- The backlog candidates found in the reviews moved to `backlog.md` (section "Protocol session").
+- **Still to do:** run `docs/hardware-smoke-test.md` once on the real headset.
 
 **Goal:** make the app pluggable so another platform (Linux/BlueZ) *can* be added later, and move the headset control logic out of the UI into its own layer. **Linux itself is out of scope for now**: only the seam is built.
 
@@ -125,14 +110,8 @@ Each step keeps every test green (440 on 2026-09-28) and gets a review pass befo
    - Remove the duplicate operation gate.
    - **Bug to fix here (found in the Step 4 review):**
      - Picking "Manual" in the preset list sends `SetEqualizerPresetAsync(Manual)`, and `V2CommandSet.SetEqualizerPreset` rejects that with `ArgumentException`. This fails on the real device too.
-     - Fix: Manual is reached only by editing bands, so remove it from the selectable presets, or ignore a user selection of Manual. Add a test.
+     - **Fixed:** selecting Manual sends the curve on screen as a custom equalizer, which is what Manual means on the device.
 4. **(Optional) Simulator as a backend.** Build a byte-level `SimulatedHeadset` behind `IHeadsetConnector` (already in `backlog.md`). `--simulated` then exercises the real protocol stack and checks the seam.
-
-## Backlog candidates from the reviews (move to `backlog.md` after the merges)
-
-These existed before the refactor, in `ProtocolSession`:
-- **Late reply taken as the answer to a newer request:** a late reply to an earlier timed-out request (e.g. `0x57`) that arrives while the next request with the same opcode is pending is matched as that request's reply. The result is stale.
-- **Reply lost between timeout and cleanup:** a reply that arrives after a request timed out, but before its `finally` clears `_pendingResponse`, is consumed by the request that already threw, so it is lost (`ProtocolSession.cs:437-440`).
 
 ## Later: Linux (not now)
 
