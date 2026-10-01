@@ -5,13 +5,8 @@ using HeadphoneControl.Resources;
 
 namespace HeadphoneControl.Simulation;
 
-/// <summary>
-/// A paired WH-CH720N without hardware: the link speaks the real frame protocol, so framing, the session, the
-/// handshake, the V2 check and the command set all run as they do against the headset.
-/// </summary>
-/// <remarks>
-/// Settings survive a reconnect. Like the real headset, only one control channel can be open at a time.
-/// </remarks>
+/// <summary>A paired WH-CH720N without hardware whose link speaks the real frame protocol.</summary>
+/// <remarks>Settings survive a reconnect. Like the real headset, only one control channel can be open at a time.</remarks>
 public sealed class SimulatedHeadsetConnector : IHeadsetConnector
 {
     public const string HeadsetName = "WH-CH720N (simulated)";

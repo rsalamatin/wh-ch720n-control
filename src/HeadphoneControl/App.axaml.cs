@@ -128,8 +128,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            // Top-level async void boundary during exit: an exception here would crash the process instead of
-            // closing it, and there is nothing left to recover. Log it and let the window close.
+            // async void boundary during exit: nothing is left to recover, so log and close instead of crashing.
             _logger?.LogError(ex, "Releasing the headset failed during shutdown");
         }
         finally

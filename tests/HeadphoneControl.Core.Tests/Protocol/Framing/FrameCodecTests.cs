@@ -11,7 +11,6 @@ public class FrameCodecTests
 
         var wire = FrameCodec.Encode(frame);
 
-        // Bytes captured from a real WH-CH720N session
         await Assert.That(Convert.ToHexString(wire)).IsEqualTo("3E0C000000000200000E3C");
     }
 
@@ -90,7 +89,6 @@ public class FrameCodecTests
     [Test]
     public async Task WhenEscapingPushesFrameOverMaxSizeThenArgumentExceptionIsThrown()
     {
-        // 1100 reserved bytes escape to 2200 bytes
         var payload = Enumerable.Repeat(FrameCodec.StartMarker, 1100).ToArray();
         var frame = new Frame(FrameType.DataMdr, 0, payload);
 

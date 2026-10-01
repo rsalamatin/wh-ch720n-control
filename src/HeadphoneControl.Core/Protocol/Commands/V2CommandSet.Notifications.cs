@@ -5,17 +5,12 @@ namespace HeadphoneControl.Protocol.Commands;
 public sealed partial class V2CommandSet
 {
     /// <summary>
-    /// Applies an unsolicited DATA_MDR payload to <paramref name="current"/>. Recognised payloads are the NTFY
-    /// opcodes (battery 0x25, equalizer 0x59, noise control 0x69, DSEE 0xE9) and the matching
-    /// RET opcodes, because a reply that arrives after its request timed out is dispatched as a notification but
-    /// still describes the current device state.
+    /// Applies an unsolicited payload to <paramref name="current"/>. RET opcodes are accepted too, because a reply that
+    /// arrives after its request timed out is dispatched as a notification but still describes the device state.
     /// </summary>
-    /// <param name="payload">The notification payload (frame payload, not the whole frame).</param>
-    /// <param name="updated">The new state, or <paramref name="current"/> when this returns false.</param>
     /// <returns>
-    /// False for ordinary traffic this parser does not map to state: unknown opcodes, known opcodes with an
-    /// unknown subtype (e.g. dual/case battery), or a preset-only equalizer
-    /// notification with no previously known bands.
+    /// False for traffic that does not map to state: unknown opcodes or subtypes (e.g. dual/case battery), or a
+    /// preset-only equalizer notification with no previously known bands.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="current"/> is null.</exception>
     /// <exception cref="ProtocolFormatException">

@@ -5,11 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace HeadphoneControl.Platform.Windows.Tests;
 
-/// <summary>
-/// Needs a WH-CH720N paired with (and ideally connected to) this PC. Run explicitly, e.g.
-/// <c>dotnet test --project tests/HeadphoneControl.Platform.Windows.Tests -- --treenode-filter "/*/*/RfcommHardwareTests/*"</c>.
-/// Only the read-only V2 init handshake is ever sent.
-/// </summary>
+// Needs the paired WH-CH720N. Read-only: sends only the V2 init handshake.
 // The headset accepts a single RFCOMM connection to its control channel, so these must run one at a time.
 [NotInParallel]
 public class RfcommHardwareTests
@@ -72,7 +68,6 @@ public class RfcommHardwareTests
                 + "Pair the headset in Windows Bluetooth settings and see docs/hardware-smoke-test.md.");
     }
 
-    // Reads everything the headset sends within the window (ACK plus response, possibly notifications).
     private static async Task<byte[]> CollectRepliesAsync(ITransport transport, TimeSpan window)
     {
         var received = new List<byte>();

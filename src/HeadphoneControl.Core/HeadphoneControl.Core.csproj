@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Platform-neutral on purpose: framing, session, commands and the headset lifecycle must be testable without WinRT or hardware; platform backends plug in through IHeadsetConnector. -->
+  <!-- Platform-neutral so the headset lifecycle is testable without WinRT or hardware. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>

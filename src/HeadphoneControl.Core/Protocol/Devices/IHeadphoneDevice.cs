@@ -1,13 +1,10 @@
 namespace HeadphoneControl.Protocol.Devices;
 
-/// <summary>
-/// What the UI binds to. Setters complete once the device has acknowledged the change; <see cref="State"/> is then updated.
-/// </summary>
+/// <summary>Setters complete once the device has acknowledged the change; <see cref="State"/> is then updated.</summary>
 /// <remarks>
 /// <para>
-/// Operations run one at a time, in call order. Setters are coalesced per <see cref="SettingGroup"/>: a setter call
-/// that a newer call of the same group replaces before it is sent sends nothing and completes with
-/// <see cref="EditOutcome.Superseded"/>, even if the link has dropped meanwhile.
+/// Operations run one at a time, in call order. A setter call that a newer call of the same <see cref="SettingGroup"/>
+/// replaces before it is sent completes with <see cref="EditOutcome.Superseded"/>, even if the link has dropped.
 /// </para>
 /// <para>
 /// Every async member fails only with one of these types, so callers can catch exactly this set:
@@ -30,24 +27,21 @@ public interface IHeadphoneDevice : IAsyncDisposable
     DeviceState State { get; }
 
     /// <summary>
-    /// Raised after every change, and when a group's last pending edit completes, possibly on a background thread.
-    /// Events from different threads can arrive out of order, so handlers should read <see cref="State"/> for the
-    /// latest snapshot rather than trust the argument.
+    /// Raised after every change and when a group's last pending edit completes, possibly on a background thread and
+    /// out of order, so handlers should read <see cref="State"/> rather than trust the argument.
     /// </summary>
     event EventHandler<DeviceState>? StateChanged;
 
-    /// <summary>Connects, performs the init handshake, confirms the protocol generation and reads all state.</summary>
+    /// <summary>Connects, confirms a V2 device and reads all state.</summary>
     Task ConnectAsync(CancellationToken cancellationToken);
 
     Task DisconnectAsync(CancellationToken cancellationToken);
 
-    /// <summary>Re-reads every supported setting from the device.</summary>
     Task RefreshAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// True from the moment a setter of <paramref name="group"/> is called until its last such call completes. While
-    /// it is true, <see cref="State"/> may not yet show what was asked for, so a UI should keep showing the user's value.
-    /// <see cref="StateChanged"/> is raised when it becomes false.
+    /// True while a setter of <paramref name="group"/> is outstanding; <see cref="State"/> may then lag the user's
+    /// value. <see cref="StateChanged"/> is raised when it becomes false.
     /// </summary>
     bool HasPendingEdit(SettingGroup group);
 

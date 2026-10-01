@@ -3,14 +3,13 @@ using HeadphoneControl.Protocol.Transport;
 
 namespace HeadphoneControl.Core;
 
-/// <summary>Which of the paired headsets to show first and to connect to.</summary>
 public static class HeadsetSelection
 {
     private const string PreferredModel = "WH-CH720N";
 
     /// <summary>
-    /// Drops devices without a Sony control service and orders the rest for display: WH-CH720N first, then V2
-    /// before V1, then by name. Other Sony models are kept so the user can still pick them.
+    /// Drops devices without a Sony control service and orders the rest: WH-CH720N first, then V2 before V1, then by
+    /// name.
     /// </summary>
     public static IReadOnlyList<DiscoveredHeadset> OrderForDisplay(IEnumerable<DiscoveredHeadset> headsets)
     {

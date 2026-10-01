@@ -109,7 +109,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial StatusSeverity StatusSeverity { get; private set; }
 
-    // Failures and warnings surface in an info bar; routine confirmations only update StatusMessage.
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(DismissAlertCommand))]
     public partial bool IsAlertVisible { get; private set; }
@@ -526,8 +525,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         finally
         {
             IsApplyingSettings = Interlocked.Decrement(ref _runningSettingSends) > 0;
-
-            // Re-syncs every group that has no pending edit, including this one once its last edit is done.
             ApplyState(_device.State);
         }
     }

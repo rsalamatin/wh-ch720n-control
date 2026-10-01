@@ -4,15 +4,10 @@ using Microsoft.Extensions.Logging;
 
 namespace HeadphoneControl.Platform.Windows;
 
-/// <summary>
-/// The Windows <see cref="IHeadsetConnector"/>: lists paired headsets from the SDP cache and opens the Sony RFCOMM
-/// control channel through WinRT.
-/// </summary>
 public sealed class RfcommConnector : IHeadsetConnector
 {
-    // RfcommTransport has no timeout of its own, and with the headset off the service lookups plus the socket
-    // connect can take this long before Windows reports an error. The budget bounds each call separately, so
-    // HeadsetSelection.ConnectPreferredAsync (list, then connect) can take up to two budgets.
+    // RfcommTransport has no timeout, and with the headset off Windows can take this long to fail. Each call gets its
+    // own budget, so HeadsetSelection.ConnectPreferredAsync (list, then connect) can take up to two.
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(20);
 
     private readonly ILoggerFactory _loggerFactory;

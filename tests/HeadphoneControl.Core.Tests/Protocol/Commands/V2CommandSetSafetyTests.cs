@@ -4,11 +4,8 @@ using HeadphoneControl.Protocol.Devices;
 
 namespace HeadphoneControl.Protocol.Tests.Commands;
 
-/// <summary>
-/// Port of the reference V1/V2 regression tests (tests/protocol/ProtocolV1Tests.cpp:30 and
-/// tests/core/ProtocolSafetyTests.cpp). Opcode 0x22 is BATTERY on V2 but POWER OFF on V1, so no path that
-/// starts from a V1 or unconfirmed generation may ever produce a payload beginning with 0x22.
-/// </summary>
+// Opcode 0x22 is BATTERY on V2 but POWER OFF on V1, so no path that starts from a V1 or unconfirmed generation
+// may produce a payload beginning with 0x22. Ported from ProtocolV1Tests.cpp:30 and ProtocolSafetyTests.cpp.
 public class V2CommandSetSafetyTests
 {
     private const byte PowerOffOnV1 = 0x22;

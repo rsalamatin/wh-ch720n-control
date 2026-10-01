@@ -6,37 +6,26 @@ using Microsoft.Extensions.Logging;
 namespace HeadphoneControl.Protocol.Session;
 
 /// <summary>
-/// Owns one connected <see cref="ITransport"/>: runs the receive loop, ACKs every DATA_MDR frame with
-/// <c>1 - deviceSeq</c>, tracks the 1-bit outgoing sequence, matches responses by opcode + subtype, and
-/// raises everything unmatched as a notification. One request is in flight at a time.
-/// Failures: <see cref="TimeoutException"/> when no ACK/response arrives in time,
+/// Owns one connected <see cref="ITransport"/>: ACKs every non-ACK frame with <c>1 - deviceSeq</c> (the device
+/// retransmits anything un-ACKed), matches DATA_MDR responses by opcode + subtype and raises the rest as
+/// notifications. One request is in flight at a time. Throws <see cref="TimeoutException"/> when no ACK/response
+/// arrives in time (no host-side retransmission; the caller decides whether to retry) and
 /// <see cref="TransportException"/> when the link drops.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Every incoming frame except an ACK is ACKed (the device retransmits anything un-ACKed); only DATA_MDR frames
-/// are matched or raised. Retransmitted DATA_MDR frames (same sequence as the previous one) are ACKed and dropped.
+/// Retransmitted DATA_MDR frames (same sequence) are ACKed and dropped. A response is matched only against frames
+/// arriving after its request was registered, so a stale reply to a timed-out request is never returned.
+/// A write interrupted after it started leaves the stream in an unknown state and ends the session.
 /// </para>
 /// <para>
-/// A response is matched only against frames that arrive after its request was registered; frames received
-/// earlier were already raised as notifications and are never handed to a later request, so a request cannot
-/// return a stale reply to a previous, timed-out request.
-/// </para>
-/// <para>
-/// There is no host-side retransmission: RFCOMM is a reliable stream, so a missing ACK or response is reported
-/// as <see cref="TimeoutException"/> and the caller decides whether to retry. A write that is interrupted after
-/// it started (timeout, cancellation, dispose) leaves the stream in an unknown state and ends the session.
-/// </para>
-/// <para>
-/// Disposing the session also disposes the transport. Event handlers never run on the receive loop:
-/// <see cref="NotificationReceived"/> and <see cref="Disconnected"/> are raised, in order, from a separate
-/// dispatch task, so a handler may await <see cref="RequestAsync"/> or <see cref="DisposeAsync"/>.
-/// An exception thrown by a handler is logged and does not affect other handlers or the session.
+/// Disposing the session disposes the transport. Events are raised in order from a separate dispatch task, never
+/// on the receive loop, so a handler may await <see cref="RequestAsync"/> or <see cref="DisposeAsync"/>.
+/// A handler exception is logged and affects neither other handlers nor the session.
 /// </para>
 /// </remarks>
 public sealed class ProtocolSession : IAsyncDisposable
 {
-    /// <summary>Default wait for an ACK or a matching response.</summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(2);
 
     private const int ReceiveBufferSize = 1024;
@@ -62,6 +51,7 @@ public sealed class ProtocolSession : IAsyncDisposable
 
     // Written only by the receive loop.
     private long _receivedFrames;
+
     private TransportException? _linkFailure;
     private bool _started;
     private bool _disposed;
@@ -103,10 +93,7 @@ public sealed class ProtocolSession : IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Sends a DATA_MDR payload and completes when the device ACKs it, with the ACK's
-    /// <see cref="ReceivedPayload.Ordinal">receive ordinal</see>.
-    /// </summary>
+    /// <summary>Sends a DATA_MDR payload; completes with the ACK's <see cref="ReceivedPayload.Ordinal"/> when the device ACKs it.</summary>
     public async Task<long> SendAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
         var wait = ValidateTimeout(timeout);
@@ -140,8 +127,8 @@ public sealed class ProtocolSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// Sends a DATA_MDR payload and returns the first DATA_MDR frame whose byte 0 equals
-    /// <paramref name="responseOpcode"/> and, when given, whose byte 1 equals <paramref name="responseSubtype"/>.
+    /// Sends a DATA_MDR payload and returns the first DATA_MDR frame whose byte 0 is <paramref name="responseOpcode"/>
+    /// and, when given, whose byte 1 is <paramref name="responseSubtype"/>.
     /// </summary>
     public async Task<ReceivedPayload> RequestAsync(
         ReadOnlyMemory<byte> payload,
@@ -195,8 +182,8 @@ public sealed class ProtocolSession : IAsyncDisposable
         // Disposing the transport unblocks a receive that does not honour cancellation.
         await _transport.DisposeAsync().ConfigureAwait(false);
 
-        // The semaphores and the CTS are deliberately not disposed: a caller whose request was just failed may
-        // still be releasing them, and none of them owns a wait handle or timer that would leak.
+        // The semaphores and CTS are deliberately not disposed: a just-failed caller may still be releasing them,
+        // and none owns a wait handle or timer that would leak.
         if (_receiveLoop is not null)
         {
             await _receiveLoop.ConfigureAwait(false);
@@ -223,7 +210,7 @@ public sealed class ProtocolSession : IAsyncDisposable
             && (pending.Subtype is not { } subtype || (payload.Length >= 2 && payload[1] == subtype));
     }
 
-    // Writes the request and waits for its completion under one deadline that also bounds the write itself.
+    // One deadline bounds both the write and the wait for completion.
     private async Task ExchangeAsync(
         ReadOnlyMemory<byte> payload,
         Task completion,
@@ -287,10 +274,9 @@ public sealed class ProtocolSession : IAsyncDisposable
 
             await WriteToTransportAsync(new Frame(FrameType.DataMdr, sequence, payload), cancellationToken).ConfigureAwait(false);
 
-            // The sequence is consumed only once the frame is on the wire. Deliberate deviation from the reference
-            // (SonyProtocolSession.cpp:199), which resyncs from every ACK: the device ACKs seq n with 1 - n, so the
-            // ACK for this frame would set exactly this value and any other ACK is a late one for an older frame,
-            // whose resync would make the next frame reuse this sequence and be dropped by the device as a duplicate.
+            // Consumed only once the frame is on the wire. Deliberately no resync from ACKs (unlike
+            // SonyProtocolSession.cpp:199): any ACK other than 1 - n is late, and resyncing from it would reuse this
+            // sequence, which the device drops as a duplicate.
             lock (_gate)
             {
                 _nextSequence = (byte)(1 - sequence);
@@ -385,8 +371,7 @@ public sealed class ProtocolSession : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            // Top of a background task nobody awaits until dispose: whatever ended the loop (a transport error or
-            // a bug) must surface to the owner as a disconnect carrying the real cause, not as an unobserved fault.
+            // Top of an unawaited background task: any cause must surface as a disconnect, not an unobserved fault.
             cause = ex;
         }
 
@@ -488,8 +473,7 @@ public sealed class ProtocolSession : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                // Event boundary: subscriber code is outside this library, and one faulty subscriber must not
-                // starve the others or stop dispatch for the rest of the session. The failure is logged.
+                // Event boundary: one faulty subscriber must not starve the others or stop dispatch.
                 SessionLog.HandlerFailed(_logger, eventName, ex);
             }
         }

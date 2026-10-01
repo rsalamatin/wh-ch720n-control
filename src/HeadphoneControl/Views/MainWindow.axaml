@@ -235,7 +235,6 @@
         <ScrollViewer x:Name="ContentScroller">
             <StackPanel Spacing="10" Margin="12,0,12,16">
 
-                <!-- Failures and warnings only; routine confirmations stay silent. -->
                 <Border x:Name="AlertBar" IsVisible="{Binding IsAlertVisible}" Padding="12" CornerRadius="10" BorderThickness="1"
                         Background="{DynamicResource AlertBackgroundBrush}" BorderBrush="{DynamicResource AlertBorderBrush}">
                     <Grid ColumnDefinitions="Auto,*,Auto">
@@ -253,7 +252,6 @@
                     </Grid>
                 </Border>
 
-                <!-- Not connected: one clear action instead of a disabled form. -->
                 <StackPanel IsVisible="{Binding !IsConnected}" Spacing="10" Margin="28,56,28,64"
                             HorizontalAlignment="Center">
                     <Border Width="88" Height="88" CornerRadius="44" Background="{DynamicResource SubtleFillBrush}"

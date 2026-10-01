@@ -20,8 +20,8 @@ public partial class MainWindow : Window
         LayoutUpdated += (_, _) => UpdateMinHeight();
     }
 
-    // The window can't be made shorter than its content: the fixed rows plus the scroller content's natural height
-    // (not its extent, which stretches to the viewport). Only content taller than the screen (MaxHeight) scrolls.
+    // Uses the content's natural height, not the scroller extent, which stretches to the viewport. Only content
+    // taller than the screen (MaxHeight) scrolls.
     private void UpdateMinHeight()
     {
         if (ContentScroller.Content is not Control content)
@@ -63,8 +63,6 @@ public partial class MainWindow : Window
         }
     }
 
-    // Grow with the content but stay on screen: cap the client height to the working area minus the title bar, and
-    // move the window up when growing would push its bottom edge past the taskbar.
     private void FitToWorkingArea()
     {
         if (Screens.ScreenFromWindow(this) is not { } screen || FrameSize is not { } frame)

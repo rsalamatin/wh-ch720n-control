@@ -9,7 +9,6 @@ public class FrameDecoderTests
     private const string RealDeviceInitReply =
         "3E010100000000023C" + "3E0C000000000801000300100200002A3C" + "3E0C000000000801000300100200002A3C";
 
-    // DATA_MDR seq 0, payload 22 00.
     private const string BatteryRequest = "3E0C00000000022200303C";
 
     [Test]

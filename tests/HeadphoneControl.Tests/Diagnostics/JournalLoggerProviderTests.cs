@@ -6,7 +6,6 @@ namespace HeadphoneControl.Tests.Diagnostics;
 
 public sealed class JournalLoggerProviderTests : IDisposable
 {
-    // Small so each test writes little; the production cap is JournalLoggerProvider.DefaultMaxFileBytes.
     private const int MaxFileBytes = 64 * 1024;
 
     private readonly string _directory = Directory.CreateDirectory(

@@ -1,7 +1,6 @@
 namespace HeadphoneControl.Protocol.Commands;
 
-// Internal so no code outside the command layer can put a V2 opcode on the wire without going through the
-// generation guard in V2CommandSet.
+// Internal so no V2 opcode reaches the wire without the generation guard in V2CommandSet.
 // Families follow GET = n, RET = n + 1, SET = n + 2, NTFY = n + 3 (reference: Client/Constants.h:34-51,
 // libs/sony-protocol/src/DeviceEventDispatcher.cpp:140-185).
 internal static class V2Opcodes

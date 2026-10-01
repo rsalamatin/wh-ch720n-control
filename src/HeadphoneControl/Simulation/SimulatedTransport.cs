@@ -109,7 +109,7 @@ internal sealed class SimulatedTransport : ITransport
         }
     }
 
-    // Caller holds _gate. The headset ACKs before it replies, as captured on the real device.
+    // The headset ACKs before it replies, as captured on the real device.
     private void Respond(Frame request)
     {
         var reaction = request.Type == FrameType.DataMdr && !request.Payload.IsEmpty

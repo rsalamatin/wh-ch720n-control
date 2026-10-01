@@ -1,14 +1,11 @@
 namespace HeadphoneControl.Protocol.Devices;
 
-/// <summary>
-/// Settings that are written as one value. A newer edit of a group carries its complete value, so it replaces any
-/// older edit of that group that has not been sent yet.
-/// </summary>
+/// <summary>Settings written as one value, so a newer edit of a group replaces an older one not yet sent.</summary>
 public enum SettingGroup
 {
     NoiseControl,
 
-    /// <summary>The preset and the custom curve: both set the whole equalizer.</summary>
+    /// <summary>Both the preset and the custom curve.</summary>
     Equalizer,
 
     Dsee,
@@ -16,10 +13,9 @@ public enum SettingGroup
 
 public enum EditPacing
 {
-    /// <summary>Sent as soon as earlier operations finish, e.g. a click.</summary>
     Immediate,
 
-    /// <summary>Sent only after the edit debounce, e.g. one step of a slider drag, so a burst sends only its last value.</summary>
+    /// <summary>Sent after the edit debounce, so a burst (e.g. a slider drag) sends only its last value.</summary>
     Debounced,
 }
 
@@ -28,6 +24,6 @@ public enum EditOutcome
     /// <summary>The device acknowledged the edit.</summary>
     Applied,
 
-    /// <summary>A newer edit of the same group replaced this one before it was sent, so nothing was sent.</summary>
+    /// <summary>A newer edit of the same group replaced this one, so nothing was sent.</summary>
     Superseded,
 }

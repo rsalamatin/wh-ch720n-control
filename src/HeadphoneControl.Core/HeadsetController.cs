@@ -7,14 +7,12 @@ using Microsoft.Extensions.Logging;
 namespace HeadphoneControl.Core;
 
 /// <summary>
-/// The real headset behind <see cref="IHeadphoneDevice"/>: owns the connection lifecycle and opens one
-/// confirmed V2 link on every connect. No V2 command is sent until both the transport's service and the
-/// init handshake confirm a V2 device.
+/// The real <see cref="IHeadphoneDevice"/>. No V2 command is sent until both the transport's service and the init
+/// handshake confirm a V2 device.
 /// </summary>
 /// <remarks>
-/// One actor processes the user's operations and the link's events (notifications, link loss) in arrival order, so
-/// nothing that changes the state runs concurrently. An event that arrives while an operation runs is applied after
-/// that operation, and only to the settings for which it is the most recently received frame.
+/// One actor runs operations and link events in arrival order. An event that arrives during an operation is applied
+/// after it, and only to settings for which it is the most recently received frame.
 /// </remarks>
 public sealed class HeadsetController : IHeadphoneDevice
 {
@@ -37,10 +35,6 @@ public sealed class HeadsetController : IHeadphoneDevice
     private volatile DeviceState _state = DeviceState.Disconnected;
     private int _disposeStarted;
 
-    /// <param name="connect">
-    /// Opens the transport and reports which Sony service it connected to. Called on every
-    /// <see cref="ConnectAsync"/>.
-    /// </param>
     public HeadsetController(
         string name,
         Func<CancellationToken, Task<TransportConnection>> connect,
@@ -120,17 +114,16 @@ public sealed class HeadsetController : IHeadphoneDevice
             {
                 var acknowledged = await link.SetEqualizerPresetAsync(preset, ct).ConfigureAwait(false);
 
-                // The device owns each preset's band curve, so it is re-read. Once the SET is ACKed the caller's
-                // cancellation no longer applies: abandoning the re-read would leave the old preset's bands showing.
+                // The device owns each preset's curve. Once ACKed, the caller's cancellation no longer applies, or
+                // the old preset's bands would stay.
                 var equalizer = await link.TryReadEqualizerAsync(_lifetime.Token).ConfigureAwait(false);
                 if (equalizer is null)
                 {
                     _logger.LogWarning("Equalizer of {Name} is unknown after switching to {Preset}", Name, preset);
                 }
 
-                // Unknown rather than the previous preset's bands, which would let a later band edit send a curve the
-                // user never saw. Stamped with the ACK, so a late curve received after it still wins and an older
-                // one, e.g. the late reply to an earlier preset's re-read, does not.
+                // Unknown, not the old bands, so a band edit can't send a curve the user never saw. Stamped with the
+                // ACK: a curve received later still wins, an older one (an earlier preset's re-read) does not.
                 if (Claim(Setting.Equalizer, equalizer?.Ordinal ?? acknowledged))
                 {
                     Publish(_state with { Equalizer = equalizer?.Value });
@@ -253,9 +246,8 @@ public sealed class HeadsetController : IHeadphoneDevice
         return link;
     }
 
-    // Records that the frame with this ordinal set the setting, unless a later frame already did. Operations and
-    // queued notifications reach the actor out of receive order (a notification received before an operation's ACK
-    // is applied after that operation), so an older frame must not overwrite a newer one.
+    // Messages reach the actor out of receive order (a notification received before an operation's ACK is applied
+    // after that operation), so an older frame must not overwrite a newer one.
     private bool Claim(Setting setting, long ordinal)
     {
         if (ordinal <= _setAt[(int)setting])
@@ -331,8 +323,7 @@ public sealed class HeadsetController : IHeadphoneDevice
             await RunAsync(
                     async ct =>
                     {
-                        // Checked first, when the edit's turn comes: every older edit queued behind a slow operation
-                        // is skipped too, and a replaced edit does not fail just because the link is gone.
+                        // Before the link check, so a replaced edit doesn't fail just because the link is gone.
                         if (edits.IsSuperseded(version))
                         {
                             return;
@@ -354,8 +345,7 @@ public sealed class HeadsetController : IHeadphoneDevice
         {
             if (edits.End())
             {
-                // While the edit was pending, subscribers kept the user's value for this group; this is their cue
-                // to show what the device holds now.
+                // Subscribers held the user's value while pending; this cues them to show the device's value.
                 RaiseStateChanged(_state);
             }
         }
@@ -387,8 +377,7 @@ public sealed class HeadsetController : IHeadphoneDevice
     {
         var operation = new Operation(body, cancellationToken);
 
-        // Registered before the operation is queued, so a token that is already cancelled abandons it before the
-        // actor can start it. A running operation observes the token itself.
+        // Registered before queuing, so a cancelled token abandons the operation before the actor can start it.
         using var registration = cancellationToken.Register(operation.CancelIfQueued);
         if (!_mailbox.Writer.TryWrite(operation))
         {
@@ -425,7 +414,6 @@ public sealed class HeadsetController : IHeadphoneDevice
                 .ConfigureAwait(false);
         }
 
-        // Disposed: the mailbox is closed and every queued operation was refused.
         await GuardAsync(
                 async () =>
                 {
@@ -449,8 +437,7 @@ public sealed class HeadsetController : IHeadphoneDevice
         }
     }
 
-    // Links the operation to the controller lifetime and enforces the IHeadphoneDevice exception contract: platform
-    // code below (WinRT via the connector) can throw types the UI does not expect.
+    // Enforces the IHeadphoneDevice exception contract: platform code (WinRT) can throw types the UI does not expect.
     private async Task ExecuteAsync(Operation operation)
     {
         if (!operation.TryStart())
@@ -560,14 +547,12 @@ public sealed class HeadsetController : IHeadphoneDevice
             return;
         }
 
-        // The session already logged the drop with its cause; this only names the headset.
         _logger.LogInformation("{Name} disconnected because the link was lost", Name);
         await ReleaseLinkAsync().ConfigureAwait(false);
         Publish(DeviceState.Disconnected);
     }
 
-    // Raised on the link's dispatch task; the actor handles them in order with everything else. After dispose the
-    // mailbox is closed and the link is being released anyway, so a refused write needs no handling.
+    // Raised on the link's dispatch task. A write refused after dispose needs no handling: the link is being released.
     private void OnNotificationReceived(object? sender, ReceivedPayload notification) =>
         _mailbox.Writer.TryWrite(new NotificationArrived((SonyV2Connection)sender!, notification));
 
@@ -642,11 +627,10 @@ public sealed class HeadsetController : IHeadphoneDevice
 
         public bool IsSuperseded(int version) => Volatile.Read(ref _version) != version;
 
-        /// <returns>True when this was the group's last pending edit.</returns>
         public bool End() => Interlocked.Decrement(ref _pending) == 0;
     }
 
-    // The connection lifecycle. Only Connected holds a link, so no operation can reach one in another state.
+    // Only Connected holds a link, so no operation can reach one in another state.
     private abstract record LinkState;
 
     private sealed record Disconnected : LinkState;

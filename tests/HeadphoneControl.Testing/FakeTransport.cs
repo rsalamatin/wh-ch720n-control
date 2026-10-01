@@ -4,16 +4,9 @@ using HeadphoneControl.Protocol.Transport;
 namespace HeadphoneControl.Testing;
 
 /// <summary>
-/// In-memory <see cref="ITransport"/> for hardware-free tests (port of the reference <c>FakeTransport</c>).
-/// Thread-safe. Inbound bytes are scripted with <see cref="QueueIncoming(ReadOnlySpan{byte})"/> /
-/// <see cref="QueueIncoming(Frame)"/>; everything the code under test writes is recorded in <see cref="Written"/>
-/// and, decoded, in <see cref="WrittenFrames"/>.
+/// Thread-safe in-memory <see cref="ITransport"/>. <see cref="ReceiveAsync"/> blocks like a real socket until bytes
+/// are queued, EOF is simulated, the link is dropped, or the call is cancelled.
 /// </summary>
-/// <remarks>
-/// <see cref="ReceiveAsync"/> behaves like a real socket: it blocks until bytes are queued, EOF is simulated,
-/// the link is dropped, or the call is cancelled. Set <see cref="AutoAck"/> and/or <see cref="Responder"/> to
-/// have the fake answer written frames like a headset would.
-/// </remarks>
 public sealed class FakeTransport : ITransport
 {
     private readonly Lock _gate = new();
@@ -25,7 +18,6 @@ public sealed class FakeTransport : ITransport
     private TaskCompletionSource _incomingChanged = NewSignal();
     private TaskCompletionSource _writtenChanged = NewSignal();
 
-    // Connected from the start, like every transport a connector hands out.
     private bool _connected = true;
     private bool _eof;
     private bool _disposed;
@@ -45,19 +37,14 @@ public sealed class FakeTransport : ITransport
         }
     }
 
-    /// <summary>Upper bound on the bytes returned by one <see cref="ReceiveAsync"/> call (simulates fragmentation).</summary>
     public int? MaxReadChunk { get; set; }
 
     /// <summary>When true, every written DATA_MDR frame is answered with an ACK carrying <c>1 - seq</c>.</summary>
     public bool AutoAck { get; set; }
 
-    /// <summary>
-    /// Called for every frame the code under test writes (after the optional auto ACK is queued); the returned
-    /// frames are queued as inbound data, in order. Use it to script request/response exchanges.
-    /// </summary>
+    /// <summary>Called for every written frame, after the auto ACK is queued; the returned frames are queued in order.</summary>
     public Func<Frame, IEnumerable<Frame>>? Responder { get; set; }
 
-    /// <summary>Snapshot of every <see cref="SendAsync"/> buffer, one entry per call.</summary>
     public IReadOnlyList<byte[]> Written
     {
         get
@@ -69,7 +56,6 @@ public sealed class FakeTransport : ITransport
         }
     }
 
-    /// <summary>Snapshot of the frames decoded from everything written so far, in order.</summary>
     public IReadOnlyList<Frame> WrittenFrames
     {
         get
@@ -219,7 +205,6 @@ public sealed class FakeTransport : ITransport
         }
     }
 
-    /// <summary>Queues raw inbound bytes (may be partial frames, garbage, or several frames).</summary>
     public void QueueIncoming(ReadOnlySpan<byte> bytes)
     {
         TaskCompletionSource signal;
@@ -236,7 +221,6 @@ public sealed class FakeTransport : ITransport
         signal.TrySetResult();
     }
 
-    /// <summary>Encodes <paramref name="frame"/> with <see cref="FrameCodec"/> and queues it as inbound bytes.</summary>
     public void QueueIncoming(Frame frame)
     {
         ArgumentNullException.ThrowIfNull(frame);
@@ -295,7 +279,6 @@ public sealed class FakeTransport : ITransport
         return hung.Task;
     }
 
-    /// <summary>Lets the write blocked by <see cref="HangNextWrite"/> complete.</summary>
     public void ReleaseHungWrite()
     {
         TaskCompletionSource? release;
@@ -308,7 +291,6 @@ public sealed class FakeTransport : ITransport
         release?.TrySetResult();
     }
 
-    /// <summary>Pending and future <see cref="ReceiveAsync"/> calls throw <paramref name="exception"/> (e.g. a platform bug).</summary>
     public void FailReceive(Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
@@ -322,7 +304,6 @@ public sealed class FakeTransport : ITransport
         signal.TrySetResult();
     }
 
-    /// <summary>Completes once at least <paramref name="count"/> frames have been written.</summary>
     public async Task WaitForWrittenFramesAsync(int count, CancellationToken cancellationToken)
     {
         while (true)

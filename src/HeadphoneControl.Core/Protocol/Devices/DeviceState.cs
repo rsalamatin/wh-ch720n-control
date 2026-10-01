@@ -76,9 +76,7 @@ public sealed record EqualizerState(EqualizerPreset Preset, int ClearBass, IRead
     }
 }
 
-/// <summary>
-/// Immutable snapshot of everything known about the headset. Null members are not (yet) known.
-/// </summary>
+/// <summary>Snapshot of what is known about the headset; null members are not (yet) known.</summary>
 public sealed record DeviceState(
     ConnectionStatus Connection,
     ProtocolGeneration Generation,

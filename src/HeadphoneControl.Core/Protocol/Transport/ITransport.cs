@@ -1,8 +1,8 @@
 namespace HeadphoneControl.Protocol.Transport;
 
 /// <summary>
-/// A connected byte stream to the headset's Sony control channel (RFCOMM on Windows). Platform connectors hand it
-/// out already connected; disposing it closes the link. Knows nothing about framing; implementations only move bytes.
+/// A connected byte stream to the headset's Sony control channel (RFCOMM on Windows), handed out already
+/// connected; disposing it closes the link. Knows nothing about framing.
 /// </summary>
 public interface ITransport : IAsyncDisposable
 {
@@ -10,7 +10,7 @@ public interface ITransport : IAsyncDisposable
     Task SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Reads whatever bytes are available (at least one, may be a partial frame or several frames).
+    /// Reads whatever bytes are available (at least one; may be a partial frame or several frames).
     /// Returns 0 when the remote side closed the link.
     /// </summary>
     Task<int> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken);

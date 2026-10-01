@@ -4,24 +4,22 @@ using System.Runtime.InteropServices;
 namespace HeadphoneControl.Protocol.Framing;
 
 /// <summary>
-/// Reassembles frames from an arbitrarily fragmented byte stream. Stateful, one per connection, not thread-safe.
-/// Malformed input (bad checksum, length mismatch, oversize, bytes outside markers) is dropped, reported
-/// through <see cref="FrameRejected"/>, and decoding resumes at the next start marker.
+/// Reassembles frames from an arbitrarily fragmented byte stream. One per connection, not thread-safe.
+/// Malformed input is dropped, reported through <see cref="FrameRejected"/>, and decoding resumes at the next
+/// start marker.
 /// </summary>
 public sealed class FrameDecoder
 {
-    // Escaped bytes of the frame being assembled, start marker included; bounded by MaxEscapedFrameSize.
+    // Start marker included.
     private readonly List<byte> _frameBytes = new(FrameCodec.MaxEscapedFrameSize);
 
-    // Bytes seen outside a frame since the last report, bounded so a noisy link cannot grow it forever.
+    // Bounded so a noisy link cannot grow it forever.
     private readonly List<byte> _garbage = new(FrameCodec.MaxEscapedFrameSize);
 
     private bool _inFrame;
 
-    /// <summary>Raised for every chunk of input that could not be decoded into a valid frame.</summary>
     public event EventHandler<FrameRejectedEventArgs>? FrameRejected;
 
-    /// <summary>Consumes <paramref name="bytes"/> and returns every frame completed by them, in order.</summary>
     public IReadOnlyList<Frame> Feed(ReadOnlySpan<byte> bytes)
     {
         List<Frame>? frames = null;
@@ -76,7 +74,7 @@ public sealed class FrameDecoder
         return frames ?? (IReadOnlyList<Frame>)[];
     }
 
-    /// <summary>Discards any partially received frame (e.g. after a reconnect).</summary>
+    /// <summary>Discards any partially received frame.</summary>
     public void Reset()
     {
         _frameBytes.Clear();

@@ -2,15 +2,11 @@ using HeadphoneControl.Protocol.Devices;
 
 namespace HeadphoneControl.Protocol.Commands;
 
-/// <summary>
-/// Builds V2 (WH-CH720N generation) command payloads and parses their replies. Pure byte-level code: no I/O.
-/// </summary>
+/// <summary>Builds V2 (WH-CH720N generation) command payloads and parses their replies.</summary>
 /// <remarks>
-/// The only way to obtain an instance is <see cref="FromHandshake"/>, which requires two independent V2 signals:
-/// the RFCOMM service the transport connected to and the init handshake reply. This matters because the V2
-/// battery query starts with opcode 0x22, which a V1 device executes as POWER OFF.
-/// SET commands are ACK-only (<see cref="MdrRequest.ResponseOpcode"/> is null): the reference sends them with
-/// a plain send and never waits for a RET (libs/sony-protocol/src/ProtocolV2.cpp:141, 176, 191, 215, 271).
+/// The only way to obtain an instance is <see cref="FromHandshake"/>, which requires both the RFCOMM service and the
+/// init reply to say V2, because the V2 battery query opcode 0x22 is POWER OFF on V1.
+/// SET commands are ACK-only, as in the reference (libs/sony-protocol/src/ProtocolV2.cpp:141, 176, 191, 215, 271).
 /// </remarks>
 public sealed partial class V2CommandSet
 {
@@ -27,13 +23,6 @@ public sealed partial class V2CommandSet
     {
     }
 
-    /// <summary>
-    /// Returns the V2 command set only when both the transport and the init reply identify a V2 device.
-    /// </summary>
-    /// <param name="transportGeneration">
-    /// Generation implied by the RFCOMM service UUID the transport connected to.
-    /// </param>
-    /// <param name="initReply">Payload of the reply to <see cref="ProtocolHandshake.CreateRequest"/>.</param>
     /// <exception cref="NotSupportedException">Either signal is not V2.</exception>
     /// <exception cref="ProtocolFormatException">
     /// <paramref name="initReply"/> is not an init reply (checked only when the transport is V2).
@@ -58,18 +47,15 @@ public sealed partial class V2CommandSet
         new($"V2 commands require a confirmed V2 device; the {source} reports {generation}. " +
             "Opcode 0x22 (V2 battery) powers off V1 devices.");
 
-    /// <summary>Single-battery query: <c>22 00</c>, answered by <c>23 00 &lt;level&gt; &lt;charging&gt;</c>.</summary>
     public MdrRequest QueryBattery() =>
         Query(V2Opcodes.BatteryGet, V2Opcodes.BatterySingle, V2Opcodes.BatteryRet, V2Opcodes.BatterySingle);
 
-    /// <summary>Noise control query: <c>66 17</c>, answered by <c>67 17 01 ...</c>.</summary>
     public MdrRequest QueryNoiseControl() =>
         Query(V2Opcodes.NoiseControlGet, V2Opcodes.NoiseControlSubtype, V2Opcodes.NoiseControlRet, null);
 
     /// <summary>
-    /// Noise control write: <c>68 17 01 &lt;effect&gt; &lt;settingType&gt; &lt;voice&gt; &lt;level&gt;</c>. Like the
-    /// reference (ProtocolV2.cpp:126-129), which the spec was derived from, the voice flag is always sent and the
-    /// level is <c>max(1, AmbientLevel)</c> in every mode, so a parsed state with level 0 round-trips.
+    /// Like the reference (ProtocolV2.cpp:126-129), the voice flag is always sent and the level is
+    /// <c>max(1, AmbientLevel)</c> in every mode, so a parsed state with level 0 round-trips.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="state"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
@@ -99,11 +85,9 @@ public sealed partial class V2CommandSet
             level);
     }
 
-    /// <summary>Equalizer query: <c>56 00</c>, answered by <c>57 00 &lt;preset&gt; 06 &lt;6 values +10&gt;</c>.</summary>
     public MdrRequest QueryEqualizer() =>
         Query(V2Opcodes.EqualizerGet, V2Opcodes.EqualizerSubtype, V2Opcodes.EqualizerRet, null);
 
-    /// <summary>Selects a preset: <c>58 00 &lt;preset&gt; 00</c>.</summary>
     /// <exception cref="ArgumentException"><paramref name="preset"/> is <see cref="EqualizerPreset.Manual"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="preset"/> is not a defined preset.</exception>
     public MdrRequest SetEqualizerPreset(EqualizerPreset preset)
@@ -123,11 +107,6 @@ public sealed partial class V2CommandSet
         return Command(V2Opcodes.EqualizerSet, V2Opcodes.EqualizerSubtype, (byte)preset, 0x00);
     }
 
-    /// <summary>
-    /// Writes manual EQ values: <c>58 00 A0 06 &lt;clearBass+10&gt; &lt;b1+10&gt; .. &lt;b5+10&gt;</c>.
-    /// </summary>
-    /// <param name="clearBass">Clear bass level, -10..10.</param>
-    /// <param name="bands">Exactly 5 band levels, each -10..10.</param>
     /// <exception cref="ArgumentNullException"><paramref name="bands"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="bands"/> does not contain exactly 5 values.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A level is outside -10..10.</exception>
@@ -155,25 +134,20 @@ public sealed partial class V2CommandSet
         return new MdrRequest(payload, null, null);
     }
 
-    /// <summary>DSEE query: <c>E6 01</c>, answered by <c>E7 01 &lt;enabled&gt;</c>.</summary>
     public MdrRequest QueryDsee() =>
         Query(V2Opcodes.DseeGet, V2Opcodes.DseeSubtype, V2Opcodes.DseeRet, V2Opcodes.DseeSubtype);
 
-    /// <summary>DSEE write: <c>E8 01 &lt;0|1&gt;</c>.</summary>
     public MdrRequest SetDsee(bool enabled) =>
         Command(V2Opcodes.DseeSet, V2Opcodes.DseeSubtype, enabled ? (byte)1 : (byte)0);
 
-    /// <summary>Firmware version query: <c>04 02</c>, answered by <c>05 02 &lt;length&gt; &lt;ASCII&gt;</c>.</summary>
     public MdrRequest QueryFirmwareVersion() =>
         Query(V2Opcodes.FirmwareGet, V2Opcodes.FirmwareSubtype, V2Opcodes.FirmwareRet, null);
 
-    /// <summary>Active codec query: <c>12 02</c>, answered by <c>13 02 &lt;codec&gt;</c>.</summary>
     public MdrRequest QueryCodec() =>
         Query(V2Opcodes.CodecGet, V2Opcodes.CodecSubtype, V2Opcodes.CodecRet, null);
 
-    // Response subtypes follow the reference: it only pins the subtype for battery and DSEE and accepts any
-    // subtype otherwise (ProtocolV2.cpp:50-52, 97-99, 197-199, 221-223, 235-237, 249-251). The parsers still
-    // check the subtype, so a mismatch surfaces as ProtocolFormatException rather than a timeout.
+    // Like the reference, only battery and DSEE pin the response subtype (ProtocolV2.cpp:50-52, 97-99, 197-199,
+    // 221-223, 235-237, 249-251); the parsers check it, so a mismatch is a ProtocolFormatException, not a timeout.
     private static MdrRequest Query(byte opcode, byte subtype, byte responseOpcode, byte? responseSubtype) =>
         new(new[] { opcode, subtype }, responseOpcode, responseSubtype);
 

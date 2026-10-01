@@ -3,12 +3,12 @@ using HeadphoneControl.Protocol.Devices;
 namespace HeadphoneControl.Core;
 
 /// <summary>
-/// RFCOMM service class UUIDs of the Sony control channel. Which one a device advertises tells the
-/// protocol generation, which matters because opcode 0x22 is BATTERY on V2 but POWER OFF on V1.
+/// RFCOMM service UUIDs of the Sony control channel. The advertised one tells the generation, which matters because
+/// opcode 0x22 is BATTERY on V2 but POWER OFF on V1.
 /// </summary>
 public static class SonyServiceIds
 {
-    /// <summary>Service UUID of V2 devices (WH-CH720N and newer).</summary>
+    // The only service the WH-CH720N advertises.
     public static Guid V2 { get; } = new("956C7B26-D49A-4BA8-B03F-B17D393CB6E2");
 
     public static Guid V1 { get; } = new("96CC203E-5068-46ad-B32D-E316F5E069BA");

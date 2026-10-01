@@ -2,19 +2,17 @@ using System.Buffers.Binary;
 
 namespace HeadphoneControl.Protocol.Framing;
 
-/// <summary>Encodes frames to wire bytes (spec section 4). Framing only, no device semantics.</summary>
+/// <summary>Encodes frames to wire bytes (spec section 4).</summary>
 public static class FrameCodec
 {
     /// <summary>Largest escaped frame, including start and end markers, that may be sent or accepted.</summary>
     public const int MaxEscapedFrameSize = 2048;
 
-    /// <summary>First byte of every frame (<c>'&gt;'</c>); escaped when it occurs inside the body.</summary>
     public const byte StartMarker = 0x3E;
 
-    /// <summary>Last byte of every frame (<c>'&lt;'</c>); escaped when it occurs inside the body.</summary>
     public const byte EndMarker = 0x3C;
 
-    /// <summary>Prefix of an escaped body byte, which is sent as this marker followed by the byte minus 0x10.</summary>
+    /// <summary>A reserved body byte is sent as this marker followed by the byte minus 0x10.</summary>
     public const byte EscapeMarker = 0x3D;
 
     // Unescaped body: type, sequence, 4-byte length, payload, then one checksum byte.

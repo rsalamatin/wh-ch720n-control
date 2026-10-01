@@ -12,8 +12,7 @@ using Windows.Storage.Streams;
 
 namespace HeadphoneControl.Platform.Windows;
 
-// Prefers the V2 service and only falls back to V1 when V2 is absent; the generation actually connected is reported
-// in DetectedGeneration so the caller can refuse to send V2 opcodes to a V1 device.
+// Falls back to V1 only when V2 is absent; DetectedGeneration lets the caller refuse V2 opcodes on a V1 device.
 internal sealed class RfcommTransport : ITransport
 {
     private readonly string _deviceId;
@@ -42,11 +41,9 @@ internal sealed class RfcommTransport : ITransport
 
     public bool IsConnected => _isConnected;
 
-    // Generation of the service UUID actually connected to; Unknown until ConnectAsync succeeds, so a failed or
-    // pending connect can never pass for V2.
+    // Unknown until ConnectAsync succeeds, so a failed or pending connect can never pass for V2.
     public ProtocolGeneration DetectedGeneration { get; private set; } = ProtocolGeneration.Unknown;
 
-    // A transport connects once; create a new one to reconnect.
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -170,8 +167,7 @@ internal sealed class RfcommTransport : ITransport
         }
     }
 
-    // Cancelling a pending read cancels the underlying WinRT operation; the socket is not guaranteed to be usable
-    // afterwards, so callers should dispose the transport after cancelling a receive.
+    // A cancelled WinRT read may leave the socket unusable, so callers dispose the transport after cancelling.
     public async Task<int> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken)
     {
         var socket = GetConnectedSocket();
@@ -225,9 +221,8 @@ internal sealed class RfcommTransport : ITransport
         _lifetime.Cancel();
         ReleaseResources();
 
-        // _sendLock and _lifetime are deliberately not disposed: a send or connect may still be in flight and must
-        // fail as a TransportException/ObjectDisposedException, not trip over a disposed primitive. Neither holds
-        // a kernel handle unless AvailableWaitHandle/WaitHandle is touched, which this class never does.
+        // _sendLock and _lifetime are deliberately not disposed: an in-flight send or connect must fail cleanly, not
+        // trip over a disposed primitive, and neither holds a kernel handle since their wait handles are never touched.
         if (wasConnected)
         {
             _logger.LogInformation("Disconnected from {DeviceName}", _deviceName);

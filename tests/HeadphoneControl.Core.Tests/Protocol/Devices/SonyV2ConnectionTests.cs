@@ -270,7 +270,6 @@ public class SonyV2ConnectionTests
         }
         catch (TException)
         {
-            // Expected: these tests assert what the failure left behind.
         }
     }
 
@@ -282,11 +281,9 @@ public class SonyV2ConnectionTests
         }
         catch (NotSupportedException)
         {
-            // Expected: these tests assert what was (not) sent before the refusal.
         }
     }
 
-    // The unanswered request waits on the fake clock: advance it once that request is on the wire.
     private static async Task<DeviceSettings> ReadAllPastTimeoutAsync(
         SonyV2Connection connection, FakeHeadset headset, FakeTimeProvider time, byte unansweredOpcode)
     {

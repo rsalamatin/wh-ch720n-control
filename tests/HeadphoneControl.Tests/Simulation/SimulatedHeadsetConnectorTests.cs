@@ -310,7 +310,6 @@ public class SimulatedHeadsetConnectorTests
         return device;
     }
 
-    // A raw session over the simulated link, for traffic HeadsetController does not expose.
     private sealed class Link : IAsyncDisposable
     {
         private readonly Channel<string> _notifications = Channel.CreateUnbounded<string>();

@@ -11,7 +11,6 @@ public class ProtocolSessionRequestTests
     [Test]
     public async Task WhenRealDeviceAnswersInitHandshakeThenRequestReturnsInitReply()
     {
-        // Replay the exact bytes a real WH-CH720N sent, including its retransmission.
         var transport = new FakeTransport();
         transport.Responder = _ =>
         {

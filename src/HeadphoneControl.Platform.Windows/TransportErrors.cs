@@ -3,7 +3,6 @@ using HeadphoneControl.Protocol.Transport;
 
 namespace HeadphoneControl.Platform.Windows;
 
-// WinRT only reports an HRESULT, so the user-facing advice is keyed on it.
 internal static class TransportErrors
 {
     private const int AccessDenied = unchecked((int)0x80070005);

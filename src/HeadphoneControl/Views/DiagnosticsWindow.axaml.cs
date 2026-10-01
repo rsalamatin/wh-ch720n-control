@@ -16,8 +16,8 @@ public partial class DiagnosticsWindow : Window
         InitializeComponent();
     }
 
-    // async void event handlers are the top-level boundary: an exception escaping here would crash the app, so the
-    // expected failures (clipboard held by another process, shell refusing the folder) are shown in the window instead.
+    // async void handlers would crash the app on an escaping exception, so expected failures (clipboard held by
+    // another process, shell refusing the folder) are shown in the window instead.
     private async void OnCopyAllClick(object? sender, RoutedEventArgs e)
     {
         if (Clipboard is not { } clipboard || DataContext is not DiagnosticsViewModel viewModel)

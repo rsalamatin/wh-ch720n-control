@@ -15,9 +15,8 @@ public sealed partial class V2CommandSet
     public BatteryState ParseBattery(ReadOnlySpan<byte> payload) => ReadBattery(payload, V2Opcodes.BatteryRet);
 
     /// <summary>
-    /// Parses <c>67 17 01 &lt;effect&gt; &lt;settingType&gt; &lt;voice&gt; &lt;level&gt;</c>. Effect 0 is off, otherwise
-    /// a non-zero settingType is ambient and 0 is noise cancelling. The level is reported as 0 when settingType
-    /// is noise cancelling.
+    /// Parses <c>67 17 01 &lt;effect&gt; &lt;settingType&gt; &lt;voice&gt; &lt;level&gt;</c>. The level is reported as 0
+    /// unless the mode is ambient.
     /// </summary>
     /// <exception cref="ProtocolFormatException">
     /// Wrong opcode/subtype/version byte, truncated, or a level above 20.
@@ -39,9 +38,7 @@ public sealed partial class V2CommandSet
     /// <exception cref="ProtocolFormatException">Wrong opcode/subtype or truncated.</exception>
     public bool ParseDsee(ReadOnlySpan<byte> payload) => ReadDsee(payload, V2Opcodes.DseeRet);
 
-    /// <summary>
-    /// Parses <c>05 02 &lt;length&gt; &lt;ASCII version&gt;</c>. Trailing NUL padding is removed.
-    /// </summary>
+    /// <summary>Parses <c>05 02 &lt;length&gt; &lt;ASCII version&gt;</c>; trailing NUL padding is removed.</summary>
     /// <exception cref="ProtocolFormatException">
     /// Wrong opcode/subtype, the declared length exceeds the payload, or the text is not ASCII.
     /// </exception>
@@ -50,9 +47,8 @@ public sealed partial class V2CommandSet
         const string What = "firmware version";
         RequireHeader(payload, V2Opcodes.FirmwareRet, V2Opcodes.FirmwareSubtype, 3, What);
 
-        // The spec says the text starts "immediately after the fixed header", but byte 2 is a length prefix:
-        // the reference skips it (ProtocolV2.cpp:227) and its test feeds 05 02 05 '3' '.' '0' '.' '1'
-        // (tests/protocol/ProtocolV1Tests.cpp:207).
+        // Contrary to the spec, byte 2 is a length prefix: the reference skips it (ProtocolV2.cpp:227) and its test
+        // feeds 05 02 05 '3' '.' '0' '.' '1' (tests/protocol/ProtocolV1Tests.cpp:207).
         int length = payload[2];
         if (3 + length > payload.Length)
         {
@@ -72,8 +68,8 @@ public sealed partial class V2CommandSet
     }
 
     /// <summary>
-    /// Parses <c>13 02 &lt;codec&gt;</c>. Codec bytes the reference does not know (including LC3, whose code is
-    /// undocumented) map to <see cref="AudioCodec.Unknown"/> rather than failing.
+    /// Parses <c>13 02 &lt;codec&gt;</c>. Unknown codec bytes (including LC3, whose code is undocumented) map to
+    /// <see cref="AudioCodec.Unknown"/>.
     /// </summary>
     /// <exception cref="ProtocolFormatException">Wrong opcode/subtype or truncated.</exception>
     public AudioCodec ParseCodec(ReadOnlySpan<byte> payload)
@@ -147,8 +143,8 @@ public sealed partial class V2CommandSet
             bands[i] = FromEqualizerWire(payload, 5 + i);
         }
 
-        // Raw cast on purpose: some Sony firmwares report custom slots (e.g. 0xA1) that the enum does not name,
-        // and failing the whole read over that would hide the band values the UI can still show.
+        // Raw cast on purpose: some firmwares report custom slots (e.g. 0xA1) the enum does not name, and the bands
+        // are still worth showing.
         return new EqualizerState((EqualizerPreset)payload[2], clearBass, bands);
     }
 

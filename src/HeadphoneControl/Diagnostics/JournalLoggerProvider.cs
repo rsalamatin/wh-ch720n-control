@@ -107,7 +107,6 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
     {
         await foreach (var item in _pending.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            // No file configured: the journal already has the line.
             item.Flushed?.TrySetResult();
         }
     }
@@ -182,7 +181,6 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
 
     // Truncates through the open handle, so a log viewer holding the file open doesn't block it. Truncation fails
     // while another process has the file memory-mapped; logging then keeps appending and the next batch retries.
-    // Returns the byte count to continue the current batch from.
     private async Task<long> ClearAsync(StreamWriter writer, string path)
     {
         await writer.FlushAsync().ConfigureAwait(false);

@@ -5,7 +5,6 @@ using Avalonia.Media;
 
 namespace HeadphoneControl.Views;
 
-// Draws a geometry from the 24x24 icon grid in Icons, scaled to the control's size and stroked with Foreground.
 internal sealed class StrokeIcon : Control
 {
     public static readonly StyledProperty<Geometry?> DataProperty =

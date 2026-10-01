@@ -525,7 +525,6 @@ public class HeadsetControllerTests
         await Assert.That(headset.Transport.IsDisposed).IsTrue();
     }
 
-    // The notification is newer than the battery reply read earlier in the same connect, so it must win.
     [Test]
     public async Task WhenNotificationArrivesWhileConnectingThenItOverridesTheEarlierReply()
     {
@@ -1043,7 +1042,6 @@ public class HeadsetControllerTests
         await Assert.That(act).ThrowsNothing();
     }
 
-    // One debounced edit per level, like a slider dragged through them; each waits on the debounce.
     private static List<Task> SendBandBurst(HeadsetController controller, int[] levels) =>
         [.. levels.Select(level => controller.SetCustomEqualizerAsync(
             0, [level, 0, 0, 0, 0], EditPacing.Debounced, CancellationToken.None))];
@@ -1051,7 +1049,6 @@ public class HeadsetControllerTests
     private static HeadsetController CreateController(FakeHeadset headset, TimeProvider? time = null) =>
         new("WH-CH720N", headset.ConnectAsync, NullLoggerFactory.Instance, time);
 
-    // The connector hangs until cancelled, like discovery against an absent headset.
     private static HeadsetController CreateHangingController(TaskCompletionSource entered) =>
         new(
             "WH-CH720N",
@@ -1071,7 +1068,6 @@ public class HeadsetControllerTests
         }
         catch (ObjectDisposedException)
         {
-            // Expected: these tests assert the state left behind by disposal.
         }
     }
 
@@ -1083,7 +1079,6 @@ public class HeadsetControllerTests
         }
         catch (InvalidOperationException)
         {
-            // Expected: these tests assert what the refused operation left behind.
         }
     }
 
@@ -1095,7 +1090,6 @@ public class HeadsetControllerTests
         }
         catch (OperationCanceledException)
         {
-            // Expected: these tests assert what the cancelled operation left behind.
         }
     }
 
@@ -1107,7 +1101,6 @@ public class HeadsetControllerTests
         }
         catch (NotSupportedException)
         {
-            // Expected: these tests assert what was (not) sent before the refusal.
         }
     }
 
@@ -1133,7 +1126,6 @@ public class HeadsetControllerTests
         await applied;
     }
 
-    // The unanswered request waits on the fake clock: advance it once that request is on the wire.
     private static async Task ConnectPastTimeoutAsync(
         HeadsetController controller, FakeHeadset headset, FakeTimeProvider time, byte unansweredOpcode)
     {
@@ -1151,7 +1143,6 @@ public class HeadsetControllerTests
         }
         catch (Exception ex) when (ex is IOException or TimeoutException)
         {
-            // Expected: these tests assert the state left behind by the failure.
         }
     }
 }

@@ -67,8 +67,8 @@ internal sealed class SimulatedHeadset
     private int[] _bands = [0, 0, 0, 0, 0];
     private byte _dsee;
 
-    // Reply is null when the headset only ACKs. Only the subtypes the app queries are answered; anything else is only
-    // ACKed, like the unanswered auto power-off query on the real headset.
+    // Only the subtypes the app queries are answered; anything else is only ACKed, like the unanswered auto power-off
+    // query on the real headset.
     public Reaction Handle(ReadOnlySpan<byte> request)
     {
         if (request.Length < 2)
@@ -98,16 +98,14 @@ internal sealed class SimulatedHeadset
 
     private static byte ToWire(int level) => (byte)(level + EqualizerWireOffset);
 
-    // Caller holds _gate.
     private byte[] NoiseControl(int opcode) =>
         [(byte)opcode, NoiseControlSubtype, NoiseControlVersion, _noiseEffect, _noiseSettingType, _focusOnVoice, _ambientLevel];
 
-    // Caller holds _gate.
     private byte[] Equalizer() =>
         [EqualizerGet + 1, EqualizerSubtype, _equalizerPreset, EqualizerValueCount, ToWire(_clearBass), .. _bands.Select(ToWire)];
 
-    // Caller holds _gate. The real headset echoes every noise-control SET as a 69 17 notification. The request is
-    // stored as sent: how the headset treats focus on voice outside Ambient is unverified.
+    // The real headset echoes every noise-control SET as a 69 17 notification. The request is stored as sent: how
+    // the headset treats focus on voice outside Ambient is unverified.
     private Reaction SetNoiseControl(ReadOnlySpan<byte> request)
     {
         if (request.Length < 7)
@@ -122,7 +120,7 @@ internal sealed class SimulatedHeadset
         return new Reaction(null, [NoiseControl(NoiseControlSet + 1)]);
     }
 
-    // Caller holds _gate. The real headset sends nothing after an EQ SET, which is why the app re-reads the curve.
+    // The real headset sends nothing after an EQ SET, which is why the app re-reads the curve.
     private Reaction SetEqualizer(ReadOnlySpan<byte> request)
     {
         if (request.Length < 4)
@@ -154,7 +152,6 @@ internal sealed class SimulatedHeadset
         return Reaction.AckOnly;
     }
 
-    // Caller holds _gate.
     private Reaction SetDsee(ReadOnlySpan<byte> request)
     {
         if (request.Length < 3)

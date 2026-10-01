@@ -5,30 +5,11 @@ using Microsoft.Extensions.Logging;
 
 namespace HeadphoneControl.Protocol.Devices;
 
-/// <summary>
-/// One confirmed V2 link: a started <see cref="ProtocolSession"/> plus the <see cref="V2CommandSet"/> the handshake
-/// unlocked. It only exists after both the transport's service and the init reply said V2, and it is unusable once the
-/// link drops; open a new one to reconnect.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Requests are serialized by the session. Every async member fails only with one of these types:
-/// </para>
-/// <list type="bullet">
-/// <item><see cref="TransportException"/>: the link is gone, or the connection was disposed while a request was in
-/// flight.</item>
-/// <item><see cref="TimeoutException"/>: no ACK or response in time; the link may still be usable.</item>
-/// <item><see cref="FormatException"/> (incl. <c>ProtocolFormatException</c>): a malformed reply.</item>
-/// <item><see cref="NotSupportedException"/>: <see cref="OpenAsync"/> only; the device is not a confirmed V2 device.</item>
-/// <item><see cref="ArgumentException"/> (incl. <see cref="ArgumentNullException"/> and
-/// <see cref="ArgumentOutOfRangeException"/>): a null argument or a value the command builders reject.</item>
-/// <item><see cref="ObjectDisposedException"/>: called after <see cref="DisposeAsync"/>.</item>
-/// <item><see cref="OperationCanceledException"/>: the caller's token was cancelled.</item>
-/// </list>
-/// <para>
-/// Events are raised in order from the session's dispatch task, never after <see cref="DisposeAsync"/> returns.
-/// </para>
-/// </remarks>
+// Exists only once both the service and the init reply said V2; unusable after the link drops (open a new one).
+// Async members fail only with TransportException (link gone, or disposed mid-request), TimeoutException (link may
+// still be usable), FormatException, NotSupportedException (OpenAsync only), ArgumentException,
+// ObjectDisposedException or OperationCanceledException.
+// The session serializes requests. Events are raised in order from the session's dispatch task, never after DisposeAsync returns.
 internal sealed class SonyV2Connection : IAsyncDisposable
 {
     private readonly ProtocolSession _session;
@@ -47,25 +28,15 @@ internal sealed class SonyV2Connection : IAsyncDisposable
         _session.Disconnected += OnDisconnected;
     }
 
-    /// <summary>
-    /// An unsolicited DATA_MDR payload, e.g. a battery change or the echo the headset sends after every SET. Its
-    /// ordinal orders it against the replies and ACKs the other members return.
-    /// </summary>
+    // Includes the echo the headset sends after every SET. The ordinal orders it against replies and ACKs.
     public event EventHandler<ReceivedPayload>? NotificationReceived;
 
-    /// <summary>The link dropped or the headset closed it. Raised at most once; <see cref="IsLinkLost"/> is set first.</summary>
+    // Raised at most once; IsLinkLost is set first.
     public event EventHandler<Exception?>? LinkLost;
 
-    /// <summary>
-    /// True once the link dropped, even if it dropped before a handler subscribed to <see cref="LinkLost"/>.
-    /// </summary>
     public bool IsLinkLost => _linkLost;
 
-    /// <summary>
-    /// Starts a session over <paramref name="transport"/>, sends the init handshake and confirms a V2 device.
-    /// Throws <see cref="NotSupportedException"/> when either signal is not V2; then only the handshake was sent.
-    /// On any failure after the arguments are validated, the transport is disposed.
-    /// </summary>
+    // On any failure after the arguments are validated, the transport is disposed.
     public static async Task<SonyV2Connection> OpenAsync(
         TransportConnection transport,
         ILoggerFactory loggerFactory,
@@ -98,10 +69,6 @@ internal sealed class SonyV2Connection : IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// Queries every setting in turn. A single unanswered or malformed query does not fail the read: that setting is
-    /// null. Link loss still propagates as <see cref="TransportException"/>.
-    /// </summary>
     public async Task<DeviceSettings> ReadAllAsync(CancellationToken cancellationToken)
     {
         var battery = await TryQueryAsync(_commands.QueryBattery(), _commands.ParseBattery, cancellationToken)
@@ -120,45 +87,33 @@ internal sealed class SonyV2Connection : IAsyncDisposable
         return new DeviceSettings(battery, noise, equalizer, dsee, firmware, codec);
     }
 
-    /// <summary>Reads the equalizer; null when the query is unanswered or malformed.</summary>
     public Task<Received<EqualizerState>?> TryReadEqualizerAsync(CancellationToken cancellationToken) =>
         TryQueryAsync(_commands.QueryEqualizer(), _commands.ParseEqualizer, cancellationToken);
 
-    /// <summary>Completes with the receive ordinal of the headset's ACK.</summary>
+    // The setters complete with the receive ordinal of the headset's ACK.
     public Task<long> SetNoiseControlAsync(NoiseControlState state, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(state);
         return SendAsync(_commands.SetNoiseControl(state), cancellationToken);
     }
 
-    /// <summary>
-    /// Completes with the receive ordinal of the headset's ACK. The headset owns each preset's band curve, so the
-    /// caller should re-read it with <see cref="TryReadEqualizerAsync"/>.
-    /// </summary>
+    // The headset owns each preset's band curve, so the caller should re-read it with TryReadEqualizerAsync.
     public Task<long> SetEqualizerPresetAsync(EqualizerPreset preset, CancellationToken cancellationToken) =>
         SendAsync(_commands.SetEqualizerPreset(preset), cancellationToken);
 
-    /// <summary>
-    /// Sets the manual curve (each level -10..10, 5 bands). Completes with the receive ordinal of the headset's ACK.
-    /// </summary>
     public Task<long> SetCustomEqualizerAsync(int clearBass, IReadOnlyList<int> bands, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(bands);
         return SendAsync(_commands.SetEqualizerCustom(clearBass, bands), cancellationToken);
     }
 
-    /// <summary>Completes with the receive ordinal of the headset's ACK.</summary>
     public Task<long> SetDseeAsync(bool enabled, CancellationToken cancellationToken) =>
         SendAsync(_commands.SetDsee(enabled), cancellationToken);
 
-    /// <summary>
-    /// Applies a <see cref="NotificationReceived"/> payload to <paramref name="current"/>. Returns false for a payload
-    /// that is not a known notification. Throws <see cref="FormatException"/> for a malformed one.
-    /// </summary>
     public bool TryApplyNotification(DeviceState current, ReadOnlySpan<byte> payload, out DeviceState updated) =>
         _commands.TryApplyNotification(current, payload, out updated);
 
-    /// <summary>Closes the session and the transport. <see cref="LinkLost"/> is not raised for this.</summary>
+    // Closes the session and the transport without raising LinkLost.
     public async ValueTask DisposeAsync()
     {
         _session.NotificationReceived -= OnNotificationReceived;
@@ -169,8 +124,8 @@ internal sealed class SonyV2Connection : IAsyncDisposable
     private Task<long> SendAsync(MdrRequest request, CancellationToken cancellationToken) =>
         _session.SendAsync(request.Payload, cancellationToken);
 
-    // A single unanswered or malformed query must not fail the whole connection: the feature stays unknown
-    // (null) and the UI disables it. Link loss still propagates.
+    // An unanswered or malformed query leaves the setting unknown (null) instead of failing the connection;
+    // link loss still propagates.
     private async Task<Received<T>?> TryQueryAsync<T>(
         MdrRequest request, SpanParser<T> parse, CancellationToken cancellationToken)
     {

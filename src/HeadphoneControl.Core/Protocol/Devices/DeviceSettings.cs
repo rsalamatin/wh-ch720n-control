@@ -1,9 +1,6 @@
 namespace HeadphoneControl.Protocol.Devices;
 
-/// <summary>
-/// One read of every setting, each with the receive ordinal of its reply. A null member was not answered (or was
-/// malformed) and is unknown.
-/// </summary>
+// A null member was unanswered or malformed and is unknown.
 internal sealed record DeviceSettings(
     Received<BatteryState>? Battery,
     Received<NoiseControlState>? NoiseControl,
