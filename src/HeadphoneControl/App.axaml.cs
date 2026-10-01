@@ -81,7 +81,7 @@ public partial class App : Application
         if (failConnect || args.Contains(SimulatedSwitch, StringComparer.OrdinalIgnoreCase))
         {
             var simulated = new SimulatedHeadsetConnector(SimulatedLatency) { FailNextConnect = failConnect };
-            return new HeadphoneDevice(SimulatedHeadsetConnector.HeadsetName, simulated.ConnectPreferredAsync, loggerFactory);
+            return new HeadsetController(SimulatedHeadsetConnector.HeadsetName, simulated.ConnectPreferredAsync, loggerFactory);
         }
 
         IHeadsetConnector connector = new RfcommConnector(loggerFactory);

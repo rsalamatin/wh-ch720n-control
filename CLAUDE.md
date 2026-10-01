@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Headphone Control** is a C# / .NET 10 Avalonia desktop app (CommunityToolkit.Mvvm) that controls a Sony **WH-CH720N** on Windows 11. It talks to the headset over WinRT Bluetooth RFCOMM through `Microsoft.Windows.SDK.NET.Ref`.
 
 The solution is `HeadphoneControl.sln`:
-- **`src/HeadphoneControl`:** the Avalonia app (`net10.0-windows10.0.22621.0`). It includes a simulated device in `Simulation/`. `App.CreateDevice` is the composition root and the only place that picks the platform backend.
+- **`src/HeadphoneControl`:** the Avalonia app (`net10.0-windows10.0.22621.0`). `--simulated` uses `Simulation/`, a byte-level `IHeadsetConnector` that speaks the real frame protocol, behind the same `HeadsetController` as the headset. `App.CreateDevice` is the composition root and the only place that picks the platform backend.
 - **`src/HeadphoneControl.Protocol`:** platform-neutral `net10.0` code:
   - framing;
   - session (ACK/sequence, request matching, notifications);
@@ -82,7 +82,11 @@ The code and `docs/development-status.md` are the source of truth. Key points:
 - **Errors:** use precise exception types, never swallow errors silently, and guard nulls with `ArgumentNullException.ThrowIfNull`. `IHeadphoneDevice` documents the exact exception set it may throw.
 - **Async:** async all the way down, with an `Async` suffix and a `CancellationToken` passed end-to-end. Use `ConfigureAwait(false)` in library code but not in UI code.
 - **Tests:**
-  - Put them in a `[ProjectName].Tests` project using TUnit + NSubstitute. Name tests by behavior (`WhenXThenY`), use AAA, and check one behavior per test.
+  - Put them in a `[ProjectName].Tests` project using TUnit + NSubstitute. Name tests by behavior (`WhenXThenY`) and check one behavior per test.
+  - **Every test uses AAA:** Arrange, Act and Assert are three blocks separated by one blank line, with no `// Arrange` comments.
+    - Act is the call under test, ideally one statement. Put waiting for its effects in Act or Assert, not Arrange.
+    - Assert holds only assertions.
+    - When the act is expected to throw, capture it as `var act = () => ...;` in Act, and assert on `act`.
   - Test through public APIs.
   - Mock only external dependencies. For Bluetooth, use `FakeTransport` or `FakeHeadset` from `tests/HeadphoneControl.Testing`.
 - **Project settings:** don't change the TFM, SDK or `LangVersion` unless asked.

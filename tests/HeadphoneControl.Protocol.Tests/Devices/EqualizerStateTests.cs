@@ -10,7 +10,9 @@ public class EqualizerStateTests
         var first = new EqualizerState(EqualizerPreset.Manual, 2, [1, 2, 3, 4, 5]);
         var second = new EqualizerState(EqualizerPreset.Manual, 2, new List<int> { 1, 2, 3, 4, 5 });
 
-        await Assert.That(first).IsEqualTo(second);
+        var equal = first.Equals(second);
+
+        await Assert.That(equal).IsTrue();
     }
 
     [Test]
@@ -19,7 +21,9 @@ public class EqualizerStateTests
         var first = new EqualizerState(EqualizerPreset.Manual, 2, [1, 2, 3, 4, 5]);
         var second = new EqualizerState(EqualizerPreset.Manual, 2, new List<int> { 1, 2, 3, 4, 5 });
 
-        await Assert.That(first.GetHashCode()).IsEqualTo(second.GetHashCode());
+        var sameHash = first.GetHashCode() == second.GetHashCode();
+
+        await Assert.That(sameHash).IsTrue();
     }
 
     [Test]
@@ -28,6 +32,8 @@ public class EqualizerStateTests
         var first = new EqualizerState(EqualizerPreset.Manual, 2, [1, 2, 3, 4, 5]);
         var second = new EqualizerState(EqualizerPreset.Manual, 2, [1, 2, 3, 4, 6]);
 
-        await Assert.That(first).IsNotEqualTo(second);
+        var equal = first.Equals(second);
+
+        await Assert.That(equal).IsFalse();
     }
 }

@@ -287,7 +287,7 @@ public class SimulatedHeadsetConnectorTests
             .IsEqualTo("80/NoiseCancelling/Off/False/1.1.4/Aac");
     }
 
-    private static HeadphoneDevice CreateDevice(IHeadsetConnector connector) =>
+    private static HeadsetController CreateDevice(IHeadsetConnector connector) =>
         new(SimulatedHeadsetConnector.HeadsetName, connector.ConnectPreferredAsync, NullLoggerFactory.Instance);
 
     private static string Describe(EqualizerState? equalizer) =>
@@ -303,14 +303,14 @@ public class SimulatedHeadsetConnectorTests
 
     private SimulatedHeadsetConnector CreateConnector() => new(TimeSpan.Zero, _time);
 
-    private async Task<HeadphoneDevice> ConnectAsync(SimulatedHeadsetConnector connector)
+    private async Task<HeadsetController> ConnectAsync(SimulatedHeadsetConnector connector)
     {
         var device = CreateDevice(connector);
         await device.ConnectAsync(CancellationToken.None);
         return device;
     }
 
-    // A raw session over the simulated link, for traffic HeadphoneDevice does not expose.
+    // A raw session over the simulated link, for traffic HeadsetController does not expose.
     private sealed class Link : IAsyncDisposable
     {
         private readonly Channel<string> _notifications = Channel.CreateUnbounded<string>();
@@ -326,8 +326,9 @@ public class SimulatedHeadsetConnectorTests
         public async Task<ReadOnlyMemory<byte>> HandshakeAsync()
         {
             var handshake = ProtocolHandshake.CreateRequest();
-            return await Session.RequestAsync(
+            var reply = await Session.RequestAsync(
                 handshake.Payload, handshake.ResponseOpcode!.Value, handshake.ResponseSubtype, CancellationToken.None);
+            return reply.Payload;
         }
 
         public async Task<V2CommandSet> ConfirmV2Async() =>
@@ -338,7 +339,7 @@ public class SimulatedHeadsetConnectorTests
 
         public ValueTask DisposeAsync() => Session.DisposeAsync();
 
-        private void OnNotification(object? sender, Frame frame) =>
-            _notifications.Writer.TryWrite(Convert.ToHexString(frame.Payload.Span));
+        private void OnNotification(object? sender, ReceivedPayload notification) =>
+            _notifications.Writer.TryWrite(Convert.ToHexString(notification.Payload.Span));
     }
 }

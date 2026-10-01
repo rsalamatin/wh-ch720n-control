@@ -41,11 +41,6 @@ internal sealed class SimulatedTransport : ITransport
         _responsePump = latency > TimeSpan.Zero ? Task.Run(PumpDelayedResponsesAsync) : Task.CompletedTask;
     }
 
-    // The connector opens the link, so there is nothing to connect here.
-    public bool IsConnected => !Volatile.Read(ref _disposed);
-
-    public Task ConnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
     // Never blocks: the session also writes its ACKs from its receive loop.
     public Task SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
