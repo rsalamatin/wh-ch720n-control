@@ -34,7 +34,7 @@ dotnet run --project src/HeadphoneControl -- --verbose    # also log every proto
 
 | Switch | Effect |
 |---|---|
-| `--simulated` | Uses an in-memory simulated headset. |
+| `--simulated` | Uses an in-memory WH-CH720N that speaks the real frame protocol, so framing, the session, the handshake and the V2 check all run as they do against the headset. |
 | `--simulated-connect-failure` | The simulated headset fails its first connect. |
 | `--verbose` | Debug logging, including raw protocol frames. Off by default, because the headset streams now-playing track titles over the same channel. |
 

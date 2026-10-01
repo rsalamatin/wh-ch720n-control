@@ -34,7 +34,6 @@ These ideas come from the original design plan (`plan.md`, deleted on 2026-09-28
 - **Trace record and replay.**
   - Record real RFCOMM sessions to `.jsonl`.
   - Replay them in unit tests, so hardware behaviour is checked without the headset.
-- **A `SimulatedHeadset` behind `ITransport`.** The app-level simulator (`SimulatedHeadphoneDevice`) bypasses the protocol stack. A byte-level simulator would test the whole stack end-to-end.
 - **Headless UI tests** (Avalonia.Headless). Click real controls and assert on the bytes the simulator receives.
 - **Safety fixture for hardware write tests.**
   - Before the first write, back up the settings to `artifacts/headset-backup.json`.
