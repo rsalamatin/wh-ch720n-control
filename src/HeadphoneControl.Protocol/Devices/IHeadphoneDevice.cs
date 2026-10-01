@@ -6,8 +6,10 @@ namespace HeadphoneControl.Protocol.Devices;
 /// <remarks>
 /// <para>
 /// Operations run one at a time, in call order. Setters are coalesced per <see cref="SettingGroup"/>: a setter call
-/// that a newer call of the same group replaces before it is sent completes successfully without sending anything.
+/// that a newer call of the same group replaces before it is sent sends nothing and completes with
+/// <see cref="EditOutcome.Superseded"/>, even if the link has dropped meanwhile.
 /// </para>
+/// <para>
 /// Every async member fails only with one of these types, so callers can catch exactly this set:
 /// <list type="bullet">
 /// <item><see cref="IOException"/> (incl. <c>TransportException</c>): the Bluetooth link failed or dropped.</item>
@@ -18,6 +20,7 @@ namespace HeadphoneControl.Protocol.Devices;
 /// <item><see cref="ArgumentException"/>: an argument is out of range (a caller bug).</item>
 /// <item><see cref="OperationCanceledException"/>: the caller's token was cancelled.</item>
 /// </list>
+/// </para>
 /// </remarks>
 public interface IHeadphoneDevice : IAsyncDisposable
 {
@@ -27,8 +30,9 @@ public interface IHeadphoneDevice : IAsyncDisposable
     DeviceState State { get; }
 
     /// <summary>
-    /// Raised after every change, possibly on a background thread. Events from different threads can arrive out of
-    /// order, so handlers should read <see cref="State"/> for the latest snapshot rather than trust the argument.
+    /// Raised after every change, and when a group's last pending edit completes, possibly on a background thread.
+    /// Events from different threads can arrive out of order, so handlers should read <see cref="State"/> for the
+    /// latest snapshot rather than trust the argument.
     /// </summary>
     event EventHandler<DeviceState>? StateChanged;
 
@@ -43,20 +47,22 @@ public interface IHeadphoneDevice : IAsyncDisposable
     /// <summary>
     /// True from the moment a setter of <paramref name="group"/> is called until its last such call completes. While
     /// it is true, <see cref="State"/> may not yet show what was asked for, so a UI should keep showing the user's value.
+    /// <see cref="StateChanged"/> is raised when it becomes false.
     /// </summary>
     bool HasPendingEdit(SettingGroup group);
 
-    Task SetNoiseControlAsync(NoiseControlState state, EditPacing pacing, CancellationToken cancellationToken);
+    Task<EditOutcome> SetNoiseControlAsync(
+        NoiseControlState state, EditPacing pacing, CancellationToken cancellationToken);
 
     /// <summary>
     /// Selects a preset, then re-reads the band curve the device assigned to it. If that read fails, the call still
     /// succeeds and <see cref="DeviceState.Equalizer"/> becomes null (unknown) until the next refresh or notification.
     /// </summary>
-    Task SetEqualizerPresetAsync(EqualizerPreset preset, CancellationToken cancellationToken);
+    Task<EditOutcome> SetEqualizerPresetAsync(EqualizerPreset preset, CancellationToken cancellationToken);
 
     /// <summary>Switches to <see cref="EqualizerPreset.Manual"/> with the given levels (each -10..10, 5 bands).</summary>
-    Task SetCustomEqualizerAsync(
+    Task<EditOutcome> SetCustomEqualizerAsync(
         int clearBass, IReadOnlyList<int> bands, EditPacing pacing, CancellationToken cancellationToken);
 
-    Task SetDseeAsync(bool enabled, CancellationToken cancellationToken);
+    Task<EditOutcome> SetDseeAsync(bool enabled, CancellationToken cancellationToken);
 }

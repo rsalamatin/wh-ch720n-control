@@ -99,7 +99,8 @@ public sealed class HeadsetController : IHeadphoneDevice
 
     public bool HasPendingEdit(SettingGroup group) => _edits[(int)group].IsPending;
 
-    public Task SetNoiseControlAsync(NoiseControlState state, EditPacing pacing, CancellationToken cancellationToken)
+    public Task<EditOutcome> SetNoiseControlAsync(
+        NoiseControlState state, EditPacing pacing, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(state);
         return SendSettingAsync(
@@ -111,7 +112,7 @@ public sealed class HeadsetController : IHeadphoneDevice
             cancellationToken);
     }
 
-    public Task SetEqualizerPresetAsync(EqualizerPreset preset, CancellationToken cancellationToken) =>
+    public Task<EditOutcome> SetEqualizerPresetAsync(EqualizerPreset preset, CancellationToken cancellationToken) =>
         EditAsync(
             SettingGroup.Equalizer,
             EditPacing.Immediate,
@@ -137,7 +138,7 @@ public sealed class HeadsetController : IHeadphoneDevice
             },
             cancellationToken);
 
-    public Task SetCustomEqualizerAsync(
+    public Task<EditOutcome> SetCustomEqualizerAsync(
         int clearBass, IReadOnlyList<int> bands, EditPacing pacing, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(bands);
@@ -151,7 +152,7 @@ public sealed class HeadsetController : IHeadphoneDevice
             cancellationToken);
     }
 
-    public Task SetDseeAsync(bool enabled, CancellationToken cancellationToken) =>
+    public Task<EditOutcome> SetDseeAsync(bool enabled, CancellationToken cancellationToken) =>
         SendSettingAsync(
             SettingGroup.Dsee,
             EditPacing.Immediate,
@@ -289,7 +290,7 @@ public sealed class HeadsetController : IHeadphoneDevice
             : current.Codec,
     };
 
-    private Task SendSettingAsync(
+    private Task<EditOutcome> SendSettingAsync(
         SettingGroup group,
         EditPacing pacing,
         Func<SonyV2Connection, CancellationToken, Task<long>> send,
@@ -310,7 +311,7 @@ public sealed class HeadsetController : IHeadphoneDevice
             },
             cancellationToken);
 
-    private async Task EditAsync(
+    private async Task<EditOutcome> EditAsync(
         SettingGroup group,
         EditPacing pacing,
         Func<SonyV2Connection, CancellationToken, Task> send,
@@ -323,25 +324,53 @@ public sealed class HeadsetController : IHeadphoneDevice
         {
             if (pacing == EditPacing.Debounced)
             {
-                await Task.Delay(EditDebounce, _timeProvider, cancellationToken).ConfigureAwait(false);
+                await DebounceAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            await RunConnectedAsync(
-                    async (link, ct) =>
+            var outcome = EditOutcome.Superseded;
+            await RunAsync(
+                    async ct =>
                     {
-                        // Checked when the edit's turn comes, so every older edit queued behind a slow operation is
-                        // skipped too.
-                        if (!edits.IsSuperseded(version))
+                        // Checked first, when the edit's turn comes: every older edit queued behind a slow operation
+                        // is skipped too, and a replaced edit does not fail just because the link is gone.
+                        if (edits.IsSuperseded(version))
                         {
-                            await send(link, ct).ConfigureAwait(false);
+                            return;
                         }
+
+                        if (_link is not Connected connected)
+                        {
+                            throw new InvalidOperationException($"{Name} is not connected.");
+                        }
+
+                        await send(connected.Link, ct).ConfigureAwait(false);
+                        outcome = EditOutcome.Applied;
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
+            return outcome;
         }
         finally
         {
-            edits.End();
+            if (edits.End())
+            {
+                // While the edit was pending, subscribers kept the user's value for this group; this is their cue
+                // to show what the device holds now.
+                RaiseStateChanged(_state);
+            }
+        }
+    }
+
+    private async Task DebounceAsync(CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        try
+        {
+            await Task.Delay(EditDebounce, _timeProvider, linked.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new ObjectDisposedException(GetType().Name);
         }
     }
 
@@ -571,9 +600,14 @@ public sealed class HeadsetController : IHeadphoneDevice
         }
 
         _state = updated;
+        RaiseStateChanged(updated);
+    }
+
+    private void RaiseStateChanged(DeviceState state)
+    {
         try
         {
-            StateChanged?.Invoke(this, updated);
+            StateChanged?.Invoke(this, state);
         }
         catch (Exception ex)
         {
@@ -608,7 +642,8 @@ public sealed class HeadsetController : IHeadphoneDevice
 
         public bool IsSuperseded(int version) => Volatile.Read(ref _version) != version;
 
-        public void End() => Interlocked.Decrement(ref _pending);
+        /// <returns>True when this was the group's last pending edit.</returns>
+        public bool End() => Interlocked.Decrement(ref _pending) == 0;
     }
 
     // The connection lifecycle. Only Connected holds a link, so no operation can reach one in another state.

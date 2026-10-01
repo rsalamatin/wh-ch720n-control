@@ -22,3 +22,12 @@ public enum EditPacing
     /// <summary>Sent only after the edit debounce, e.g. one step of a slider drag, so a burst sends only its last value.</summary>
     Debounced,
 }
+
+public enum EditOutcome
+{
+    /// <summary>The device acknowledged the edit.</summary>
+    Applied,
+
+    /// <summary>A newer edit of the same group replaced this one before it was sent, so nothing was sent.</summary>
+    Superseded,
+}

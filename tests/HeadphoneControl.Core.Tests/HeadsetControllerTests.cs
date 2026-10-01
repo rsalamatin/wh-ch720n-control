@@ -797,6 +797,143 @@ public class HeadsetControllerTests
     }
 
     [Test]
+    public async Task WhenOlderQueuedEditIsReplacedThenItCompletesAsSuperseded()
+    {
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset);
+        await controller.ConnectAsync(CancellationToken.None);
+        var writeHung = headset.Transport.HangNextWrite();
+        var first = controller.SetDseeAsync(false, CancellationToken.None);
+        await writeHung.WaitAsync(Patience);
+
+        var older = controller.SetDseeAsync(true, CancellationToken.None);
+        var newer = controller.SetDseeAsync(false, CancellationToken.None);
+        headset.Transport.ReleaseHungWrite();
+        await Task.WhenAll(first, older, newer).WaitAsync(Patience);
+
+        await Assert.That(older.Result).IsEqualTo(EditOutcome.Superseded);
+    }
+
+    [Test]
+    public async Task WhenEditIsAcknowledgedThenItCompletesAsApplied()
+    {
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset);
+        await controller.ConnectAsync(CancellationToken.None);
+
+        var outcome = await controller.SetDseeAsync(false, CancellationToken.None);
+
+        await Assert.That(outcome).IsEqualTo(EditOutcome.Applied);
+    }
+
+    // The connect is cancelled while both edits wait behind it, so neither finds a link.
+    [Test]
+    public async Task WhenReplacedEditFindsNoLinkThenItCompletesAsSuperseded()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var controller = CreateHangingController(entered);
+        using var connectCancellation = new CancellationTokenSource();
+        var connect = controller.ConnectAsync(connectCancellation.Token);
+        await entered.Task.WaitAsync(Patience);
+
+        var older = controller.SetDseeAsync(true, CancellationToken.None);
+        var newer = controller.SetDseeAsync(false, CancellationToken.None);
+        await connectCancellation.CancelAsync();
+        await IgnoreCancelledAsync(connect);
+        await IgnoreNotConnectedAsync(newer);
+
+        await Assert.That(await older.WaitAsync(Patience)).IsEqualTo(EditOutcome.Superseded);
+    }
+
+    [Test]
+    public async Task WhenDebouncedCurveIsReplacedByAPresetThenTheCurveIsNotSent()
+    {
+        var time = new FakeTimeProvider();
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset, time);
+        await controller.ConnectAsync(CancellationToken.None);
+
+        var curve = controller.SetCustomEqualizerAsync(0, [5, 0, 0, 0, 0], EditPacing.Debounced, CancellationToken.None);
+        await controller.SetEqualizerPresetAsync(EqualizerPreset.BassBoost, CancellationToken.None);
+        time.Advance(controller.EditDebounce);
+        await curve.WaitAsync(Patience);
+
+        await Assert.That(headset.SentPayloads().Any(payload => payload[0] == 0x58 && payload[2] == 0xA0)).IsFalse();
+    }
+
+    [Test]
+    public async Task WhenEditIsQueuedBehindARunningOperationThenItsGroupHasAPendingEdit()
+    {
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset);
+        await controller.ConnectAsync(CancellationToken.None);
+        var writeHung = headset.Transport.HangNextWrite();
+        var running = controller.SetNoiseControlAsync(
+            new NoiseControlState(NoiseControlMode.Off, false, 1), EditPacing.Immediate, CancellationToken.None);
+        await writeHung.WaitAsync(Patience);
+
+        var queued = controller.SetDseeAsync(false, CancellationToken.None);
+
+        try
+        {
+            await Assert.That(controller.HasPendingEdit(SettingGroup.Dsee)).IsTrue();
+        }
+        finally
+        {
+            headset.Transport.ReleaseHungWrite();
+            await Task.WhenAll(running, queued).WaitAsync(Patience);
+        }
+    }
+
+    [Test]
+    public async Task WhenTheLastPendingEditEndsThenStateChangedIsRaisedWithNothingPending()
+    {
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset);
+        await controller.ConnectAsync(CancellationToken.None);
+        var pendingAtEachChange = new List<bool>();
+        controller.StateChanged += (_, _) => pendingAtEachChange.Add(controller.HasPendingEdit(SettingGroup.Dsee));
+
+        await controller.SetDseeAsync(false, CancellationToken.None);
+
+        await Assert.That(pendingAtEachChange).IsEquivalentTo([true, false], CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task WhenDisposedDuringADebounceThenTheEditThrowsObjectDisposed()
+    {
+        var time = new FakeTimeProvider();
+        var headset = new FakeHeadset();
+        var controller = CreateController(headset, time);
+        await controller.ConnectAsync(CancellationToken.None);
+        var edit = controller.SetCustomEqualizerAsync(0, [1, 0, 0, 0, 0], EditPacing.Debounced, CancellationToken.None);
+
+        await controller.DisposeAsync();
+
+        await Assert.That(() => edit.WaitAsync(Patience)).Throws<ObjectDisposedException>();
+    }
+
+    // The notification is received during the debounce, before the edit's ACK, so the edit's value wins.
+    [Test]
+    public async Task WhenNotificationArrivesDuringADebounceThenTheEditedValueIsKept()
+    {
+        var time = new FakeTimeProvider();
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset, time);
+        await controller.ConnectAsync(CancellationToken.None);
+        var notified = NextStateAsync(controller, state => state.NoiseControl?.AmbientLevel == 3);
+
+        var edit = controller.SetNoiseControlAsync(
+            new NoiseControlState(NoiseControlMode.Ambient, false, 15), EditPacing.Debounced, CancellationToken.None);
+        headset.Notify(0x69, 0x17, 0x01, 0x01, 0x01, 0x00, 3);
+        await notified;
+        time.Advance(controller.EditDebounce);
+        await edit.WaitAsync(Patience);
+
+        await Assert.That(controller.State.NoiseControl!.AmbientLevel).IsEqualTo(15);
+    }
+
+    [Test]
     public async Task WhenEditOfAnotherGroupIsQueuedThenTheEditIsStillSent()
     {
         var headset = new FakeHeadset();

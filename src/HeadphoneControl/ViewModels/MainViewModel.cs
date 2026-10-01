@@ -491,7 +491,15 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         IsBusy = Interlocked.Increment(ref _runningConnectionOperations) > 0;
         try
         {
-            await RunGuardedAsync(operationKey, operation, success, cancellationToken);
+            await RunGuardedAsync(
+                operationKey,
+                async ct =>
+                {
+                    await operation(ct);
+                    return true;
+                },
+                success,
+                cancellationToken);
         }
         finally
         {
@@ -502,7 +510,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     private async Task SendSettingAsync(
         string operationKey,
-        Func<CancellationToken, Task> send,
+        Func<CancellationToken, Task<EditOutcome>> send,
         Func<Status>? success = null)
     {
         IsApplyingSettings = Interlocked.Increment(ref _runningSettingSends) > 0;
@@ -510,7 +518,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         {
             await RunGuardedAsync(
                 operationKey,
-                send,
+                // A superseded edit sent nothing; the newer edit that replaced it reports the outcome.
+                async ct => await send(ct) == EditOutcome.Applied,
                 success ?? (() => Status.Info(Strings.Get("Status_Applied"))),
                 _settingsCancellation.Token);
         }
@@ -518,23 +527,25 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         {
             IsApplyingSettings = Interlocked.Decrement(ref _runningSettingSends) > 0;
 
-            // Once the group's last edit is done (or failed), this shows what the device actually holds.
+            // Re-syncs every group that has no pending edit, including this one once its last edit is done.
             ApplyState(_device.State);
         }
     }
 
     private async Task RunGuardedAsync(
         string operationKey,
-        Func<CancellationToken, Task> operation,
+        Func<CancellationToken, Task<bool>> operation,
         Func<Status> success,
         CancellationToken cancellationToken)
     {
         var operationName = Strings.Get(operationKey);
         try
         {
-            await operation(cancellationToken);
-            SetStatus(success());
-            _logger.LogInformation("{Operation} succeeded", operationName);
+            if (await operation(cancellationToken))
+            {
+                SetStatus(success());
+                _logger.LogInformation("{Operation} succeeded", operationName);
+            }
         }
         catch (OperationCanceledException)
         {

@@ -12,6 +12,8 @@ namespace HeadphoneControl.Tests.ViewModels;
 
 public class MainViewModelTests
 {
+    private static readonly Task<EditOutcome> Applied = Task.FromResult(EditOutcome.Applied);
+
     private static DeviceState ConnectedState() => new(
         ConnectionStatus.Connected,
         ProtocolGeneration.V2,
@@ -40,7 +42,7 @@ public class MainViewModelTests
             .Returns(call =>
             {
                 current = current with { NoiseControl = call.Arg<NoiseControlState>() };
-                return Task.CompletedTask;
+                return Applied;
             });
         return device;
     }
@@ -122,14 +124,14 @@ public class MainViewModelTests
     public async Task WhenSettingSendIsRunningThenSettingsStayEditable()
     {
         var device = CreateDevice(ConnectedState());
-        var pending = new TaskCompletionSource();
+        var pending = new TaskCompletionSource<EditOutcome>();
         device.SetDseeAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(pending.Task);
         using var viewModel = CreateViewModel(device);
 
         viewModel.IsDseeEnabled = true;
 
         await Assert.That(viewModel.CanEditEqualizer).IsTrue();
-        pending.SetResult();
+        pending.SetResult(EditOutcome.Applied);
     }
 
     [Test]
@@ -166,15 +168,33 @@ public class MainViewModelTests
     public async Task WhenStateArrivesWhileOnlyAnotherGroupIsPendingThenSliderShowsDeviceValue()
     {
         var device = CreateDevice(ConnectedState());
+        var inFlight = new TaskCompletionSource<EditOutcome>();
+        device.SetNoiseControlAsync(Arg.Any<NoiseControlState>(), Arg.Any<EditPacing>(), Arg.Any<CancellationToken>())
+            .Returns(inFlight.Task);
+        device.HasPendingEdit(SettingGroup.Equalizer).Returns(true);
         using var viewModel = CreateViewModel(device);
         viewModel.AmbientLevel = 15;
-        device.HasPendingEdit(SettingGroup.Equalizer).Returns(true);
         var older = ConnectedState() with { NoiseControl = new NoiseControlState(NoiseControlMode.Ambient, false, 12) };
         device.State.Returns(older);
 
         device.StateChanged += Raise.Event<EventHandler<DeviceState>>(device, older);
 
         await Assert.That(viewModel.AmbientLevel).IsEqualTo(12);
+    }
+
+    [Test]
+    public async Task WhenEditIsSupersededThenAnEarlierErrorStaysVisible()
+    {
+        var device = CreateDevice(ConnectedState());
+        device.RefreshAsync(Arg.Any<CancellationToken>()).ThrowsAsync(new TimeoutException("no ACK"));
+        device.SetDseeAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(EditOutcome.Superseded));
+        using var viewModel = CreateViewModel(device);
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        viewModel.IsDseeEnabled = true;
+        await viewModel.ApplyDseeCommand.ExecutionTask!;
+
+        await Assert.That(viewModel.IsAlertVisible).IsTrue();
     }
 
     [Test]
@@ -246,34 +266,34 @@ public class MainViewModelTests
     public async Task WhenNewerEditStartsThenInFlightSendIsNotCancelled()
     {
         var device = CreateDevice(ConnectedState());
-        var first = new TaskCompletionSource();
+        var first = new TaskCompletionSource<EditOutcome>();
         var tokens = new List<CancellationToken>();
         device.SetDseeAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(call => { tokens.Add(call.Arg<CancellationToken>()); return tokens.Count == 1 ? first.Task : Task.CompletedTask; });
+            .Returns(call => { tokens.Add(call.Arg<CancellationToken>()); return tokens.Count == 1 ? first.Task : Applied; });
         using var viewModel = CreateViewModel(device);
         viewModel.IsDseeEnabled = true;
 
         viewModel.IsDseeEnabled = false;
 
         await Assert.That(tokens[0].IsCancellationRequested).IsFalse();
-        first.SetResult();
+        first.SetResult(EditOutcome.Applied);
     }
 
     [Test]
     public async Task WhenNewerEditSupersedesSendThenStatusIsNotCancelled()
     {
         var device = CreateDevice(ConnectedState());
-        var first = new TaskCompletionSource();
+        var first = new TaskCompletionSource<EditOutcome>();
         var calls = 0;
         device.SetDseeAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(_ => ++calls == 1 ? first.Task : Task.CompletedTask);
+            .Returns(_ => ++calls == 1 ? first.Task : Applied);
         using var viewModel = CreateViewModel(device);
         viewModel.IsDseeEnabled = true;
         var firstRun = viewModel.ApplyDseeCommand.ExecutionTask!;
         viewModel.IsDseeEnabled = false;
         var secondRun = viewModel.ApplyDseeCommand.ExecutionTask!;
 
-        first.SetResult();
+        first.SetResult(EditOutcome.Applied);
         await Task.WhenAll(firstRun, secondRun);
 
         await Assert.That(viewModel.StatusMessage).IsEqualTo(Strings.Get("Status_Applied"));
@@ -284,7 +304,7 @@ public class MainViewModelTests
     {
         var device = CreateDevice(ConnectedState());
         device.SetDseeAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(call => Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>()));
+            .Returns(async call => { await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>()); return EditOutcome.Applied; });
         using var viewModel = CreateViewModel(device);
         viewModel.IsDseeEnabled = true;
         var sending = viewModel.ApplyDseeCommand.ExecutionTask!;
@@ -581,7 +601,7 @@ public class MainViewModelTests
             .Returns(_ =>
             {
                 device.State.Returns(ConnectedState() with { Equalizer = null });
-                return Task.CompletedTask;
+                return Applied;
             });
         using var viewModel = CreateViewModel(device);
 
@@ -599,7 +619,7 @@ public class MainViewModelTests
             .Returns(_ =>
             {
                 device.State.Returns(ConnectedState() with { Equalizer = new EqualizerState(EqualizerPreset.BassBoost, 0, [0, 0, 0, 0, 0]) });
-                return Task.CompletedTask;
+                return Applied;
             });
         using var viewModel = CreateViewModel(device);
 
@@ -790,7 +810,7 @@ public class MainViewModelTests
             .Returns(_ =>
             {
                 device.State.Returns(ConnectedState() with { Equalizer = null });
-                return Task.CompletedTask;
+                return Applied;
             });
         using var viewModel = CreateViewModel(device);
 
