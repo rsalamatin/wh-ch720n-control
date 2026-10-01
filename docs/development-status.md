@@ -68,9 +68,9 @@ Git is not installed, so the agents could not use worktrees. Instead, each agent
 **Remaining:**
 0. ~~Architecture refactor~~: all steps done on 2026-10-01 (see `docs/architecture-refactor-plan.md`). Run the hardware smoke test (`docs/hardware-smoke-test.md`) once on the real headset to confirm.
 1. On hardware, check the codec byte map for codecs other than AAC. Focus on Voice and the headset button were confirmed on 2026-09-28.
-2. ~~Update `README.md`~~. Rewritten on 2026-09-28 (RFCOMM, switches, tests, layout, limitations).
+2. ~~Update `README.md`~~. Rewritten on 2026-09-28 (RFCOMM, switches, tests, layout, limitations); brought up to date with the compact UI, the architecture and the Core merge on 2026-10-01.
 
 **Review follow-ups (done 2026-09-28):**
 - **EQ unknown:** after a failed re-read, `Equalizer` is set to null stamped with the ACK's receive ordinal, so a late `0x57`/`0x59` received after the ACK is kept and an older one is not. The UI then says "Preset applied, but the equalizer could not be read back. Press Refresh."
 - **Sequence handling, a deliberate departure from the reference:** `ProtocolSession` no longer resyncs its outgoing sequence from ACKs. The reference does (`SonyProtocolSession.cpp:199`). Here the sequence simply alternates once each frame is on the wire, and only the ACK `1 - seq` of the frame in flight counts. A late ACK is ignored and logged at Debug. This is safe because the WH-CH720N ACKs seq n with 1−n, so resyncing from the matching ACK adds nothing, and resyncing from a late ACK caused sequence reuse (a silently dropped command). It was verified on hardware.
-- **Link-drop test:** `WhenLinkDropsAfterTheLastConnectQueryThenStateSettlesNotConnected` is a smoke test. The race it guards is closed structurally: the actor handles the link-lost message only after the connect operation finishes. It still describes BLE GATT and needs to describe RFCOMM, `--simulated`, `--verbose`, and how to run the tests.
+- **Link-drop test:** `WhenLinkDropsAfterTheLastConnectQueryThenStateSettlesNotConnected` is a smoke test. The race it guards is closed structurally: the actor handles the link-lost message only after the connect operation finishes.

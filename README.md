@@ -6,17 +6,20 @@ It is built with C# / .NET 10, Avalonia UI and CommunityToolkit.Mvvm.
 
 ## Features
 
-- **Status:** battery level and charging, firmware version, active codec.
+- **Connection:** press **Connect** to open the control channel. The `⋯` menu holds Refresh now, Cancel operation, Disconnect, the firmware version and codec, and Diagnostics.
+- **Status:** battery level and charging in the header; firmware version and active codec in the `⋯` menu.
 - **Noise control:** Noise cancelling, Ambient sound or Off.
   - Ambient level 1–20.
   - Focus on voice.
-  - The ambient controls are greyed out outside Ambient mode.
+  - The ambient options appear only in Ambient mode.
 - **Equalizer:**
-  - The 9 presets and a custom curve (Clear Bass plus 5 bands, −10..+10).
+  - The 9 presets and a custom curve (Clear Bass plus 5 bands, −10..+10), and a reset to flat.
   - After a preset change, the app reads back the band curve the headset chose.
 - **DSEE** upscaling on/off.
+- **Compact layout:** the window fits its content, each section collapses to a one-line summary, and only failures and warnings are shown, in an info bar.
+- **Smooth editing:** slider and band drags are debounced, and an edit replaced by a newer one is never sent.
 - **Live updates:** changes made with the headset's own buttons show up in the app immediately.
-- **Diagnostics:** a panel in the app, also written to `headphone-control.log` beside the executable. The file is capped at 1 MB; when it is full it moves to `headphone-control.log.1` (replacing the older one) and a fresh file starts.
+- **Diagnostics:** a separate window (`⋯` → Diagnostics…) with Copy all, Clear and Open log folder. The log is also written to `headphone-control.log` beside the executable. The file is capped at 1 MB; when it is full it moves to `headphone-control.log.1` (replacing the older one) and a fresh file starts.
 
 ## Requirements
 
@@ -24,9 +27,10 @@ It is built with C# / .NET 10, Avalonia UI and CommunityToolkit.Mvvm.
 - A WH-CH720N **paired** in Windows Bluetooth settings.
 - Only one app can hold the headset's control channel at a time. Close the Sony app on your phone if connecting fails.
 
-## Run
+## Build and run
 
 ```powershell
+dotnet build HeadphoneControl.sln                         # output goes to artifacts/
 dotnet run --project src/HeadphoneControl                 # connect to the paired headset
 dotnet run --project src/HeadphoneControl -- --simulated  # simulated headset, no hardware needed
 dotnet run --project src/HeadphoneControl -- --verbose    # also log every protocol frame
@@ -43,6 +47,10 @@ dotnet run --project src/HeadphoneControl -- --verbose    # also log every proto
 - **Transport:** the headset's control channel is a Bluetooth Classic **RFCOMM** byte stream (Sony service UUID `956C7B26-D49A-4BA8-B03F-B17D393CB6E2`), opened through the WinRT `Windows.Devices.Bluetooth.Rfcomm` API.
 - **Protocol:** on top of the byte stream the app speaks Sony's framed V2 protocol: escaped frames with a checksum, 1-bit ACK/sequence, and request/response plus notifications.
 - **Safety:** commands are sent only after both the RFCOMM service and the init handshake confirm a V2 device. Opcode `0x22` reads the battery on V2 but **powers off** V1 devices.
+- **Structure:**
+  - `HeadsetController` (in Core) owns the connection lifecycle as a single actor. It serializes every operation, and a newer value read from the headset is never overwritten by an older one.
+  - The platform plugs in below it through `IHeadsetConnector` (list paired headsets, connect to one). Windows is the only backend; the simulator is a second one.
+  - `App.CreateDevice` is the only place that picks the backend.
 
 ## Project layout
 
@@ -61,6 +69,7 @@ docs/
   development-status.md        status, verified hardware facts, next steps
   backlog.md                   future improvements
   hardware-smoke-test.md       manual checklist for the real headset
+  architecture-refactor-plan.md  design and history of the platform seam and HeadsetController
 ```
 
 ## Tests
@@ -76,11 +85,16 @@ The tests use TUnit with the Microsoft.Testing.Platform runner, which `global.js
 The `[Explicit]` hardware tests need the paired headset and only read from it. Run them one at a time:
 
 ```powershell
+dotnet test --project tests/HeadphoneControl.Platform.Windows.Tests -- --treenode-filter "/*/*/RfcommHardwareTests/*"
 dotnet test --project tests/HeadphoneControl.Tests -- --treenode-filter "/*/*/HeadphoneDeviceHardwareTests/*"
 ```
+
+`docs/hardware-smoke-test.md` walks through these tests, a manual app run and common connection failures.
 
 ## Known limitations
 
 - **No auto power-off setting.** It was removed because the WH-CH720N (firmware 1.1.4) never answers the query.
-- **Single device:** the app connects to the first paired Sony headset. There is no device picker yet.
+- **Windows only.** The platform seam exists, but there is no Linux backend.
+- **No auto-connect, tray icon or saved settings.** Connect is manual on every start; see `docs/backlog.md`.
+- **Single device:** the app connects to the first paired Sony headset in this order: a WH-CH720N first, then V2 devices before V1, then by name. There is no device picker yet.
 - **Only AAC verified:** codec detection has been checked with AAC only.
