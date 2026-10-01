@@ -4,7 +4,7 @@
         xmlns:res="using:HeadphoneControl.Resources"
         x:Class="HeadphoneControl.Views.DiagnosticsWindow"
         x:DataType="vm:DiagnosticsViewModel"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/headphone-control.ico"
         Width="720" Height="460" MinWidth="420" MinHeight="240"
         WindowStartupLocation="CenterOwner"
         Title="{x:Static res:Strings.DiagnosticsTitle}">

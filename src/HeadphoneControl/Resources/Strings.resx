@@ -92,6 +92,14 @@
   <data name="Menu_RefreshNow" xml:space="preserve"><value>Refresh now</value></data>
   <data name="Menu_CancelOperation" xml:space="preserve"><value>Cancel operation</value></data>
   <data name="Menu_Diagnostics" xml:space="preserve"><value>Diagnostics…</value></data>
+  <data name="Menu_Theme" xml:space="preserve"><value>Theme</value></data>
+  <data name="Theme_System" xml:space="preserve"><value>Use Windows setting</value></data>
+  <data name="Theme_Light" xml:space="preserve"><value>Light</value></data>
+  <data name="Theme_Dark" xml:space="preserve"><value>Dark</value></data>
+  <data name="Tray_Open" xml:space="preserve"><value>Open Headphone Control</value></data>
+  <data name="Tray_Exit" xml:space="preserve"><value>Exit</value></data>
+  <data name="TrayToolTipFormat" xml:space="preserve"><value>{0} · {1}</value></data>
+  <data name="TrayToolTipWithBatteryFormat" xml:space="preserve"><value>{0} · {1} · {2}</value></data>
   <data name="Dismiss" xml:space="preserve"><value>Dismiss</value></data>
   <data name="ResetEqualizer" xml:space="preserve"><value>Reset equalizer to flat</value></data>
   <data name="CopyAll" xml:space="preserve"><value>Copy all</value></data>

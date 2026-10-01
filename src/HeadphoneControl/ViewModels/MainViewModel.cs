@@ -89,7 +89,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectionText), nameof(ConnectionSummary), nameof(IsConnected), nameof(IsConnectionFailed),
-        nameof(IsConnecting), nameof(EmptyStateTitle), nameof(EmptyStateBody), nameof(ConnectButtonText))]
+        nameof(IsConnecting), nameof(EmptyStateTitle), nameof(EmptyStateBody), nameof(ConnectButtonText), nameof(TrayToolTip))]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand), nameof(DisconnectCommand), nameof(RefreshCommand))]
     public partial ConnectionStatus Connection { get; private set; }
 
@@ -114,6 +114,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public partial bool IsAlertVisible { get; private set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TrayToolTip))]
     public partial string BatteryText { get; private set; } = string.Empty;
 
     [ObservableProperty]
@@ -121,7 +122,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public partial int BatteryLevel { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsBatteryLow))]
+    [NotifyPropertyChangedFor(nameof(IsBatteryLow), nameof(TrayToolTip))]
     public partial bool HasBattery { get; private set; }
 
     [ObservableProperty]
@@ -182,6 +183,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public bool IsOperationRunning => IsBusy || IsApplyingSettings;
 
     public bool IsBatteryLow => HasBattery && BatteryLevel <= LowBatteryLevel;
+
+    public string TrayToolTip => HasBattery
+        ? Strings.Format("TrayToolTipWithBatteryFormat", Strings.AppTitle, ConnectionText, BatteryText)
+        : Strings.Format("TrayToolTipFormat", Strings.AppTitle, ConnectionText);
 
     public string EmptyStateTitle => IsConnecting
         ? DisplayNames.Of(ConnectionStatus.Connecting)

@@ -9,7 +9,7 @@
         mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="820"
         x:Class="HeadphoneControl.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/headphone-control.ico"
         Width="420" MinWidth="380" SizeToContent="Height" WindowStartupLocation="CenterScreen"
         Title="{x:Static res:Strings.AppTitle}">
 
@@ -208,6 +208,14 @@
                         <MenuItem Header="{x:Static res:Strings.Menu_CancelOperation}" Command="{Binding CancelCommand}"
                                   IsVisible="{Binding IsOperationRunning}" />
                         <MenuItem Header="{x:Static res:Strings.Menu_Diagnostics}" Click="OnDiagnosticsClick" />
+                        <MenuItem Header="{x:Static res:Strings.Menu_Theme}">
+                            <MenuItem x:Name="ThemeSystemItem" Header="{x:Static res:Strings.Theme_System}"
+                                      ToggleType="Radio" GroupName="Theme" Click="OnThemeClick" />
+                            <MenuItem x:Name="ThemeLightItem" Header="{x:Static res:Strings.Theme_Light}"
+                                      ToggleType="Radio" GroupName="Theme" Click="OnThemeClick" />
+                            <MenuItem x:Name="ThemeDarkItem" Header="{x:Static res:Strings.Theme_Dark}"
+                                      ToggleType="Radio" GroupName="Theme" Click="OnThemeClick" />
+                        </MenuItem>
                         <MenuItem Header="{x:Static res:Strings.Disconnect}" Command="{Binding DisconnectCommand}"
                                   IsVisible="{Binding IsConnected}" />
                         <Separator IsVisible="{Binding IsConnected}" />

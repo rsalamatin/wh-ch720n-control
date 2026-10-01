@@ -52,6 +52,8 @@ dotnet test --project tests/HeadphoneControl.Tests -- --treenode-filter "/*/*/He
 
 Diagnostics appear in the UI and are appended to `headphone-control.log` beside the executable, at Information level by default. The file is capped at 10 MB; when it is full it is cleared and logging starts over in the same file. Debug level (`--verbose`) logs every frame, including the now-playing track titles the headset streams, so it is opt-in.
 
+UI preferences (currently only the theme) are saved by `Settings/UiSettingsStore` in `%APPDATA%\HeadphoneControl\settings.json`. Minimizing hides the window to the tray icon that `App` creates.
+
 ## Protocol knowledge
 
 The code and `docs/development-status.md` are the source of truth. Key points:

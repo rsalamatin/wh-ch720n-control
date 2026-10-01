@@ -1,12 +1,16 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Data;
 using Avalonia.Markup.Xaml;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using HeadphoneControl.Core;
 using HeadphoneControl.Diagnostics;
 using HeadphoneControl.Platform.Windows;
 using HeadphoneControl.Protocol.Devices;
+using HeadphoneControl.Resources;
+using HeadphoneControl.Settings;
 using HeadphoneControl.Simulation;
 using HeadphoneControl.ViewModels;
 using HeadphoneControl.Views;
@@ -29,6 +33,9 @@ public partial class App : Application
     private ILogger? _logger;
     private IHeadphoneDevice? _device;
     private MainViewModel? _mainViewModel;
+    private UiSettingsStore? _settingsStore;
+    private UiSettings? _settings;
+    private TrayIcon? _trayIcon;
     private bool _shutdownStarted;
     private bool _shutdownCompleted;
 
@@ -63,14 +70,54 @@ public partial class App : Application
                 _loggerFactory.CreateLogger<MainViewModel>(),
                 dispatch);
 
+            _settingsStore = new UiSettingsStore(UiSettingsStore.DefaultPath, _loggerFactory.CreateLogger<UiSettingsStore>());
+            _settings = _settingsStore.Load();
+            ApplyTheme(_settings.Theme);
+
             var window = new MainWindow { DataContext = _mainViewModel };
+            window.ShowTheme(_settings.Theme);
+            window.ThemeSelected += OnThemeSelected;
             window.Closing += OnMainWindowClosing;
+            CreateTrayIcon(window, _mainViewModel);
+            desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
             desktop.MainWindow = window;
             desktop.Exit += OnExit;
         }
 
         base.OnFrameworkInitializationCompleted();
     }
+
+    private void CreateTrayIcon(MainWindow window, MainViewModel viewModel)
+    {
+        var open = new NativeMenuItem(Strings.Tray_Open);
+        open.Click += (_, _) => window.RestoreFromTray();
+        var exit = new NativeMenuItem(Strings.Tray_Exit);
+        exit.Click += (_, _) => window.Close();
+
+        _trayIcon = new TrayIcon
+        {
+            Icon = window.Icon,
+            Menu = [open, new NativeMenuItemSeparator(), exit],
+        };
+        _trayIcon.Bind(TrayIcon.ToolTipTextProperty, new Binding(nameof(MainViewModel.TrayToolTip)) { Source = viewModel });
+        _trayIcon.Clicked += (_, _) => window.RestoreFromTray();
+        TrayIcon.SetIcons(this, [_trayIcon]);
+        window.MinimizeToTray = true;
+    }
+
+    private void OnThemeSelected(object? sender, ThemePreference theme)
+    {
+        ApplyTheme(theme);
+        _settings = (_settings ?? UiSettings.Default) with { Theme = theme };
+        _settingsStore?.Save(_settings);
+    }
+
+    private void ApplyTheme(ThemePreference theme) => RequestedThemeVariant = theme switch
+    {
+        ThemePreference.Light => ThemeVariant.Light,
+        ThemePreference.Dark => ThemeVariant.Dark,
+        _ => ThemeVariant.Default,
+    };
 
     // The only place that picks the headset implementation and the platform backend.
     private static IHeadphoneDevice CreateDevice(string[] args, ILoggerFactory loggerFactory)
@@ -141,6 +188,7 @@ public partial class App : Application
     private void OnExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
         _logger?.LogInformation("Exiting with code {ExitCode}", e.ApplicationExitCode);
+        _trayIcon?.Dispose();
         _loggerFactory?.Dispose();
         _logProvider?.Dispose();
     }

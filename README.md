@@ -19,6 +19,8 @@ It is built with C# / .NET 10, Avalonia UI and CommunityToolkit.Mvvm.
 - **Compact layout:** the window fits its content, each section collapses to a one-line summary, and only failures and warnings are shown, in an info bar.
 - **Smooth editing:** slider and band drags are debounced, and an edit replaced by a newer one is never sent.
 - **Live updates:** changes made with the headset's own buttons show up in the app immediately.
+- **Tray:** minimizing hides the window to a tray icon. Click it, or choose Open, to bring the window back; Exit quits. The tooltip shows the connection and battery level.
+- **Theme:** `⋯` → Theme switches between the Windows setting, Light and Dark. The choice is saved in `%APPDATA%\HeadphoneControl\settings.json`.
 - **Diagnostics:** a separate window (`⋯` → Diagnostics…) with Copy all, Clear and Open log folder. The log is also written to `headphone-control.log` beside the executable. The file is capped at 10 MB; when it is full it is cleared and logging starts over in the same file.
 
 ## Requirements
@@ -94,6 +96,6 @@ dotnet test --project tests/HeadphoneControl.Tests -- --treenode-filter "/*/*/He
 
 - **No auto power-off setting.** It was removed because the WH-CH720N (firmware 1.1.4) never answers the query.
 - **Windows only.** The platform seam exists, but there is no Linux backend.
-- **No auto-connect, tray icon or saved settings.** Connect is manual on every start; see `docs/backlog.md`.
+- **No auto-connect.** Connect is manual on every start. Only the theme is saved, and closing the window quits instead of hiding to the tray; see `docs/backlog.md`.
 - **Single device:** the app connects to the first paired Sony headset in this order: a WH-CH720N first, then V2 devices before V1, then by name. There is no device picker yet.
 - **Only AAC verified:** codec detection has been checked with AAC only.

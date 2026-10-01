@@ -43,6 +43,12 @@ public static class Strings
     public static string Menu_RefreshNow => Get(nameof(Menu_RefreshNow));
     public static string Menu_CancelOperation => Get(nameof(Menu_CancelOperation));
     public static string Menu_Diagnostics => Get(nameof(Menu_Diagnostics));
+    public static string Menu_Theme => Get(nameof(Menu_Theme));
+    public static string Theme_System => Get(nameof(Theme_System));
+    public static string Theme_Light => Get(nameof(Theme_Light));
+    public static string Theme_Dark => Get(nameof(Theme_Dark));
+    public static string Tray_Open => Get(nameof(Tray_Open));
+    public static string Tray_Exit => Get(nameof(Tray_Exit));
     public static string Dismiss => Get(nameof(Dismiss));
     public static string ResetEqualizer => Get(nameof(ResetEqualizer));
     public static string CopyAll => Get(nameof(CopyAll));

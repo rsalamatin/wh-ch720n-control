@@ -2,22 +2,84 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using HeadphoneControl.Settings;
 using HeadphoneControl.ViewModels;
 
 namespace HeadphoneControl.Views;
 
 public partial class MainWindow : Window
 {
+    private readonly Dictionary<MenuItem, ThemePreference> _themeItems;
     private MainViewModel? _viewModel;
     private DiagnosticsWindow? _diagnosticsWindow;
+    private WindowState _stateBeforeMinimize = WindowState.Normal;
 
     public MainWindow()
     {
         InitializeComponent();
+        _themeItems = new()
+        {
+            [ThemeSystemItem] = ThemePreference.System,
+            [ThemeLightItem] = ThemePreference.Light,
+            [ThemeDarkItem] = ThemePreference.Dark,
+        };
         Opened += (_, _) => FitToWorkingArea();
         SizeChanged += (_, _) => FitToWorkingArea();
         ScalingChanged += (_, _) => FitToWorkingArea();
         LayoutUpdated += (_, _) => UpdateMinHeight();
+    }
+
+    internal event EventHandler<ThemePreference>? ThemeSelected;
+
+    // Only set once a tray icon exists: without one, a hidden window could not be reopened.
+    internal bool MinimizeToTray { get; set; }
+
+    internal void ShowTheme(ThemePreference theme)
+    {
+        foreach (var (item, value) in _themeItems)
+        {
+            item.IsChecked = value == theme;
+        }
+    }
+
+    internal void RestoreFromTray()
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = _stateBeforeMinimize;
+        }
+
+        Show();
+        Activate();
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property != WindowStateProperty)
+        {
+            return;
+        }
+
+        if (WindowState == WindowState.Minimized)
+        {
+            _stateBeforeMinimize = change.GetOldValue<WindowState>() is WindowState.Maximized
+                ? WindowState.Maximized
+                : WindowState.Normal;
+            if (MinimizeToTray)
+            {
+                Hide();
+            }
+        }
+    }
+
+    private void OnThemeClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem item && _themeItems.TryGetValue(item, out var theme))
+        {
+            ShowTheme(theme);
+            ThemeSelected?.Invoke(this, theme);
+        }
     }
 
     // Uses the content's natural height, not the scroller extent, which stretches to the viewport. Only content
@@ -87,6 +149,12 @@ public partial class MainWindow : Window
     {
         if (_diagnosticsWindow is not null)
         {
+            // Hiding the main window to the tray also hides the window it owns.
+            if (!_diagnosticsWindow.IsVisible)
+            {
+                _diagnosticsWindow.Show(this);
+            }
+
             if (_diagnosticsWindow.WindowState == WindowState.Minimized)
             {
                 _diagnosticsWindow.WindowState = WindowState.Normal;

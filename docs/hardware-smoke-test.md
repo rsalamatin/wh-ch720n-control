@@ -47,6 +47,14 @@ The handshake sends `3E0C000000000200000E3C`. A reply like the following (captur
 A warning `... does not advertise the V2 service but advertises V1` means that V2 commands must not be sent. Stop and
 report it.
 
+While connected, also check the window behaviour:
+
+- Minimize: the window disappears into the tray, and the tray tooltip shows `Connected` and the battery level.
+- Click the tray icon: the window comes back in its previous state (maximized stays maximized).
+- Open `⋯` → Diagnostics…, minimize, restore, then choose Diagnostics… again: the window shows.
+- `⋯` → Theme → Dark switches the colours at once and is still selected after a restart.
+- Tray → Exit closes the app and releases the headset.
+
 ## 4. Common failures
 
 | Message contains | Likely cause / fix |

@@ -3,11 +3,10 @@
 These ideas come from the original design plan (`plan.md`, deleted on 2026-09-28). The plan is out of date wherever it differs from the code; `docs/development-status.md` describes what exists.
 
 ## App features
-- **System tray.**
-  - Avalonia `TrayIcon` with the battery level in its tooltip.
-  - Menu: Noise cancelling / Ambient / Off, Open, Reconnect, Exit.
+- **System tray.** Minimizing already hides the window to a tray icon (Open / Exit, connection and battery in the tooltip). Still missing:
+  - Menu: Noise cancelling / Ambient / Off, Reconnect.
   - Closing the window hides it to the tray. Only Exit disconnects.
-- **Settings persistence.** Save to `%APPDATA%\HeadphoneControl\settings.json` with System.Text.Json source generation: last device, window bounds, "start minimized", and the last ambient level.
+- **Settings persistence.** `%APPDATA%\HeadphoneControl\settings.json` (`UiSettingsStore`) already holds the theme. Add: last device, window bounds, "start minimized", and the last ambient level.
 - **Auto-connect** on startup to the last device, or to the first paired WH-CH720N.
 - **Single instance.** A second launch brings the running window to the front.
 - **Periodic refresh.**
@@ -18,7 +17,6 @@ These ideas come from the original design plan (`plan.md`, deleted on 2026-09-28
   - A manual Disconnect stops the retries.
   - A plain timeout does not count as link loss.
 - **Self-contained publish.** `dotnet publish -r win-x64 --self-contained` produces a portable folder. No installer.
-- **App icon.** The windows still use the Avalonia logo; replace it with a headphone icon (`.ico`).
 - **Remember collapsed sections** along with the other persisted settings.
 
 ## Safety hardening

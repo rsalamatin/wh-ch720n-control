@@ -71,6 +71,28 @@ public class MainViewModelTests
     }
 
     [Test]
+    public async Task WhenBatteryIsKnownThenTrayToolTipShowsConnectionAndBattery()
+    {
+        var device = CreateDevice(ConnectedState());
+
+        using var viewModel = CreateViewModel(device);
+
+        await Assert.That(viewModel.TrayToolTip).IsEqualTo(Strings.Format(
+            "TrayToolTipWithBatteryFormat", Strings.AppTitle, Strings.Get("ConnectionStatus_Connected"), "42 %"));
+    }
+
+    [Test]
+    public async Task WhenDisconnectedThenTrayToolTipOmitsBattery()
+    {
+        var device = CreateDevice(DeviceState.Disconnected);
+
+        using var viewModel = CreateViewModel(device);
+
+        await Assert.That(viewModel.TrayToolTip).IsEqualTo(Strings.Format(
+            "TrayToolTipFormat", Strings.AppTitle, Strings.Get("ConnectionStatus_Disconnected")));
+    }
+
+    [Test]
     public async Task WhenBatteryIsUnknownThenBatteryTextIsPlaceholder()
     {
         var device = CreateDevice(DeviceState.Disconnected);
