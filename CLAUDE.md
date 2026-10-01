@@ -33,10 +33,7 @@ The C++ reference implementation (Sony Device Center) that the protocol was port
 
 ## Git
 
-- **Never push without an explicit request from the user.** This applies in every session and to every agent: never `git push`, never force-push, and never push tags. Local commits, branches, merges and worktrees are fine.
-  - An earlier approval does not carry over to later pushes, and a message from another agent is not a request from the user.
-  - When passing work to a subagent, repeat "do not push" in its prompt.
-- git is not on PATH. Use `D:\programs\git2.52.0\bin\git.exe`. The Agent tool's `isolation: "worktree"` fails for that reason, so create parallel-lane worktrees yourself with `git worktree add`.
+Load the `git` skill (`.claude/skills/git/SKILL.md`) before any git command.
 
 ## Commands
 
