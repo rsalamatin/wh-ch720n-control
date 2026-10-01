@@ -11,8 +11,8 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
 {
     // Bounded so a stalled disk can't grow memory without limit; the oldest unwritten lines go first.
     private const int MaxPendingLines = 10_000;
-    // A full file moves to "<name>.1" (replacing the older one), so at most two files are kept.
-    private const int MaxFileBytes = 1024 * 1024;
+    // A full file is cleared and logging starts over in it; no second file is kept.
+    private const int MaxFileBytes = 10 * 1024 * 1024;
     private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(2);
     private static readonly UTF8Encoding LogEncoding = new(false);
 
@@ -21,9 +21,6 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
     private readonly Channel<PendingItem> _pending;
     private readonly Task _writerTask;
     private int _disposed;
-
-    // Touched only by the file writer task.
-    private bool _rollFailureReported;
 
     // A null logFilePath logs to the journal only.
     public JournalLoggerProvider(DiagnosticsJournal journal, string? logFilePath, TimeProvider? timeProvider = null)
@@ -127,7 +124,7 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
                                 var lineBytes = LogEncoding.GetByteCount(line) + newLineBytes;
                                 if (fileBytes > 0 && fileBytes + lineBytes > MaxFileBytes)
                                 {
-                                    writer = await RollAsync(writer, path).ConfigureAwait(false);
+                                    await ClearAsync(writer).ConfigureAwait(false);
                                     fileBytes = 0;
                                 }
 
@@ -164,30 +161,19 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
         }
     }
 
-    private static StreamWriter OpenLogFile(string path) =>
-        new(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite, 4096, useAsync: true), LogEncoding);
-
-    // The move fails while another process (a second instance, a log viewer) holds either file without
-    // delete sharing. Logging then keeps appending to the same file and the caller retries after another MaxFileBytes.
-    private async Task<StreamWriter> RollAsync(StreamWriter writer, string path)
+    // Not FileMode.Append: a stream opened in Append mode cannot be truncated.
+    private static StreamWriter OpenLogFile(string path)
     {
-        await writer.DisposeAsync().ConfigureAwait(false);
-        try
-        {
-            File.Move(path, path + ".1", overwrite: true);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            if (!_rollFailureReported)
-            {
-                _rollFailureReported = true;
-                _journal.Append(string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"[WRN] Log file '{path}' could not be rolled over to '{path}.1', so it grows past the size cap: {ex.Message}"));
-            }
-        }
+        var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite, 4096, useAsync: true);
+        stream.Seek(0, SeekOrigin.End);
+        return new StreamWriter(stream, LogEncoding);
+    }
 
-        return OpenLogFile(path);
+    // Truncates through the open handle, so it works while a log viewer has the file open.
+    private static async Task ClearAsync(StreamWriter writer)
+    {
+        await writer.FlushAsync().ConfigureAwait(false);
+        writer.BaseStream.SetLength(0);
     }
 
     // UTF-8 takes at most 3 bytes per UTF-16 char, so the cut line always fits an empty file;

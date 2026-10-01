@@ -50,7 +50,7 @@ dotnet test --project tests/HeadphoneControl.Core.Tests --treenode-filter "/*/*/
 dotnet test --project tests/HeadphoneControl.Tests -- --treenode-filter "/*/*/HeadphoneDeviceHardwareTests/*"   # [Explicit] read-only hardware test
 ```
 
-Diagnostics appear in the UI and are appended to `headphone-control.log` beside the executable, at Information level by default. The file is capped at 1 MB and then rolled over to `headphone-control.log.1`. Debug level (`--verbose`) logs every frame, including the now-playing track titles the headset streams, so it is opt-in.
+Diagnostics appear in the UI and are appended to `headphone-control.log` beside the executable, at Information level by default. The file is capped at 10 MB; when it is full it is cleared and logging starts over in the same file. Debug level (`--verbose`) logs every frame, including the now-playing track titles the headset streams, so it is opt-in.
 
 ## Protocol knowledge
 

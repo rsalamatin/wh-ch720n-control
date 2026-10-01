@@ -19,7 +19,7 @@ It is built with C# / .NET 10, Avalonia UI and CommunityToolkit.Mvvm.
 - **Compact layout:** the window fits its content, each section collapses to a one-line summary, and only failures and warnings are shown, in an info bar.
 - **Smooth editing:** slider and band drags are debounced, and an edit replaced by a newer one is never sent.
 - **Live updates:** changes made with the headset's own buttons show up in the app immediately.
-- **Diagnostics:** a separate window (`⋯` → Diagnostics…) with Copy all, Clear and Open log folder. The log is also written to `headphone-control.log` beside the executable. The file is capped at 1 MB; when it is full it moves to `headphone-control.log.1` (replacing the older one) and a fresh file starts.
+- **Diagnostics:** a separate window (`⋯` → Diagnostics…) with Copy all, Clear and Open log folder. The log is also written to `headphone-control.log` beside the executable. The file is capped at 10 MB; when it is full it is cleared and logging starts over in the same file.
 
 ## Requirements
 

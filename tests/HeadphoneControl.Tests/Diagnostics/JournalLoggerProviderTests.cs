@@ -5,14 +5,12 @@ namespace HeadphoneControl.Tests.Diagnostics;
 
 public sealed class JournalLoggerProviderTests : IDisposable
 {
-    private const int MaxFileBytes = 1024 * 1024;
+    private const int MaxFileBytes = 10 * 1024 * 1024;
 
     private readonly string _directory = Directory.CreateDirectory(
         Path.Combine(Path.GetTempPath(), "HeadphoneControl.Tests", Guid.NewGuid().ToString("N"))).FullName;
 
     private string LogPath => Path.Combine(_directory, "test.log");
-
-    private string BackupPath => LogPath + ".1";
 
     public void Dispose() => Directory.Delete(_directory, recursive: true);
 
@@ -63,18 +61,7 @@ public sealed class JournalLoggerProviderTests : IDisposable
     }
 
     [Test]
-    public async Task WhenMoreThanTheLimitIsLoggedThenTheBackupFileStaysWithinTheLimit()
-    {
-        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
-
-        LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
-        await provider.DisposeAsync();
-
-        await Assert.That(new FileInfo(BackupPath).Length).IsLessThanOrEqualTo(MaxFileBytes);
-    }
-
-    [Test]
-    public async Task WhenTheFileRollsThenTheOlderLinesAreKeptInTheBackupFile()
+    public async Task WhenTheFileIsFullThenTheOlderLinesAreDropped()
     {
         var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
         provider.CreateLogger("Test").LogInformation("oldest line");
@@ -82,11 +69,11 @@ public sealed class JournalLoggerProviderTests : IDisposable
         LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
         await provider.DisposeAsync();
 
-        await Assert.That(await File.ReadAllTextAsync(BackupPath)).Contains("oldest line");
+        await Assert.That(await File.ReadAllTextAsync(LogPath)).DoesNotContain("oldest line");
     }
 
     [Test]
-    public async Task WhenTheFileRollsThenTheNewestLineIsInTheLogFile()
+    public async Task WhenTheFileIsFullThenTheNewestLineIsInTheLogFile()
     {
         var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
         LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
@@ -98,19 +85,31 @@ public sealed class JournalLoggerProviderTests : IDisposable
     }
 
     [Test]
-    public async Task WhenTheFileRollsThenAnOlderBackupFileIsReplaced()
+    public async Task WhenTheFileIsFullThenNoSecondFileIsCreated()
     {
-        await File.WriteAllTextAsync(BackupPath, "stale backup");
         var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
 
         LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
         await provider.DisposeAsync();
 
-        await Assert.That(await File.ReadAllTextAsync(BackupPath)).DoesNotContain("stale backup");
+        await Assert.That(Directory.GetFiles(_directory)).IsEquivalentTo([LogPath]);
     }
 
     [Test]
-    public async Task WhenExistingFileIsAtTheLimitThenTheFirstLineGoesToAFreshFile()
+    public async Task WhenAViewerHoldsTheFileOpenThenTheFullFileIsStillCleared()
+    {
+        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        provider.Flush(TimeSpan.FromSeconds(5));
+        await using var viewer = new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+        LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
+        await provider.DisposeAsync();
+
+        await Assert.That(new FileInfo(LogPath).Length).IsLessThanOrEqualTo(MaxFileBytes);
+    }
+
+    [Test]
+    public async Task WhenExistingFileIsAtTheLimitThenItIsClearedBeforeTheFirstLine()
     {
         await File.WriteAllTextAsync(LogPath, new string('x', MaxFileBytes));
         var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
@@ -144,32 +143,6 @@ public sealed class JournalLoggerProviderTests : IDisposable
     }
 
     [Test]
-    public async Task WhenTheFileCannotBeRolledThenJournalReportsTheFailedRoll()
-    {
-        Directory.CreateDirectory(BackupPath);
-        var journal = new DiagnosticsJournal();
-        var provider = new JournalLoggerProvider(journal, LogPath);
-
-        LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
-        await provider.DisposeAsync();
-
-        await Assert.That(journal.Snapshot().Any(line => line.Contains("could not be rolled over", StringComparison.Ordinal))).IsTrue();
-    }
-
-    [Test]
-    public async Task WhenTheFileCannotBeRolledThenLoggingContinuesInTheLogFile()
-    {
-        Directory.CreateDirectory(BackupPath);
-        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
-        LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
-
-        provider.CreateLogger("Test").LogInformation("after failed roll");
-        await provider.DisposeAsync();
-
-        await Assert.That(await File.ReadAllTextAsync(LogPath)).Contains("after failed roll");
-    }
-
-    [Test]
     public async Task WhenLogFileIsNotWritableThenJournalReportsIt()
     {
         var path = Path.Combine(_directory, "missing", "x.log");
@@ -198,7 +171,8 @@ public sealed class JournalLoggerProviderTests : IDisposable
     private static void LogPadding(JournalLoggerProvider provider, int totalChars)
     {
         var logger = provider.CreateLogger("Test");
-        var padding = new string('p', 1000);
+        // Large lines keep the count far below the provider's 10,000-line queue, so none are dropped.
+        var padding = new string('p', 64 * 1024);
         for (var written = 0; written < totalChars; written += padding.Length)
         {
             logger.LogInformation("{Padding}", padding);
