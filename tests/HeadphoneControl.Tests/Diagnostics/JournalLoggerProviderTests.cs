@@ -133,7 +133,18 @@ public sealed class JournalLoggerProviderTests : IDisposable
     }
 
     [Test]
-    public async Task WhenTheFileCannotBeRolledThenJournalReportsIt()
+    public async Task WhenASingleLineExceedsTheLimitThenItsStartIsKept()
+    {
+        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+
+        provider.CreateLogger("Test").LogInformation("start of huge line " + new string('x', MaxFileBytes * 2));
+        await provider.DisposeAsync();
+
+        await Assert.That(await File.ReadAllTextAsync(LogPath)).Contains("start of huge line");
+    }
+
+    [Test]
+    public async Task WhenTheFileCannotBeRolledThenJournalReportsTheFailedRoll()
     {
         Directory.CreateDirectory(BackupPath);
         var journal = new DiagnosticsJournal();
@@ -142,7 +153,20 @@ public sealed class JournalLoggerProviderTests : IDisposable
         LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
         await provider.DisposeAsync();
 
-        await Assert.That(journal.Snapshot().Any(line => line.Contains("not writable", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(journal.Snapshot().Any(line => line.Contains("could not be rolled over", StringComparison.Ordinal))).IsTrue();
+    }
+
+    [Test]
+    public async Task WhenTheFileCannotBeRolledThenLoggingContinuesInTheLogFile()
+    {
+        Directory.CreateDirectory(BackupPath);
+        var provider = new JournalLoggerProvider(new DiagnosticsJournal(), LogPath);
+        LogPadding(provider, totalChars: MaxFileBytes * 3 / 2);
+
+        provider.CreateLogger("Test").LogInformation("after failed roll");
+        await provider.DisposeAsync();
+
+        await Assert.That(await File.ReadAllTextAsync(LogPath)).Contains("after failed roll");
     }
 
     [Test]

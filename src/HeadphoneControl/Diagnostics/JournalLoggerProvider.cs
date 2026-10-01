@@ -22,6 +22,9 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
     private readonly Task _writerTask;
     private int _disposed;
 
+    // Touched only by the file writer task.
+    private bool _rollFailureReported;
+
     // A null logFilePath logs to the journal only.
     public JournalLoggerProvider(DiagnosticsJournal journal, string? logFilePath, TimeProvider? timeProvider = null)
     {
@@ -114,31 +117,38 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
                 while (await _pending.Reader.WaitToReadAsync().ConfigureAwait(false))
                 {
                     var flushRequests = new List<TaskCompletionSource>();
-                    while (_pending.Reader.TryRead(out var item))
+                    try
                     {
-                        if (item.Line is not null)
+                        while (_pending.Reader.TryRead(out var item))
                         {
-                            var line = FitToEmptyFile(item.Line, newLineBytes);
-                            var lineBytes = LogEncoding.GetByteCount(line) + newLineBytes;
-                            if (fileBytes > 0 && fileBytes + lineBytes > MaxFileBytes)
+                            if (item.Line is not null)
                             {
-                                writer = await RollAsync(writer, path).ConfigureAwait(false);
-                                fileBytes = 0;
+                                var line = FitToEmptyFile(item.Line, newLineBytes);
+                                var lineBytes = LogEncoding.GetByteCount(line) + newLineBytes;
+                                if (fileBytes > 0 && fileBytes + lineBytes > MaxFileBytes)
+                                {
+                                    writer = await RollAsync(writer, path).ConfigureAwait(false);
+                                    fileBytes = 0;
+                                }
+
+                                await writer.WriteLineAsync(line).ConfigureAwait(false);
+                                fileBytes += lineBytes;
                             }
 
-                            await writer.WriteLineAsync(line).ConfigureAwait(false);
-                            fileBytes += lineBytes;
+                            if (item.Flushed is not null)
+                            {
+                                flushRequests.Add(item.Flushed);
+                            }
                         }
 
-                        if (item.Flushed is not null)
-                        {
-                            flushRequests.Add(item.Flushed);
-                        }
+                        // Flush per batch so the file is useful even if the process is killed.
+                        await writer.FlushAsync().ConfigureAwait(false);
                     }
-
-                    // Flush per batch so the file is useful even if the process is killed.
-                    await writer.FlushAsync().ConfigureAwait(false);
-                    flushRequests.ForEach(request => request.TrySetResult());
+                    finally
+                    {
+                        // Also on failure, so a crash handler's Flush doesn't wait out its timeout.
+                        flushRequests.ForEach(request => request.TrySetResult());
+                    }
                 }
             }
             finally
@@ -157,20 +167,40 @@ public sealed class JournalLoggerProvider : ILoggerProvider, IAsyncDisposable
     private static StreamWriter OpenLogFile(string path) =>
         new(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite, 4096, useAsync: true), LogEncoding);
 
-    private static async Task<StreamWriter> RollAsync(StreamWriter writer, string path)
+    // The move fails while another process (a second instance, a log viewer) holds either file without
+    // delete sharing. Logging then keeps appending to the same file and the caller retries after another MaxFileBytes.
+    private async Task<StreamWriter> RollAsync(StreamWriter writer, string path)
     {
         await writer.DisposeAsync().ConfigureAwait(false);
-        File.Move(path, path + ".1", overwrite: true);
+        try
+        {
+            File.Move(path, path + ".1", overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            if (!_rollFailureReported)
+            {
+                _rollFailureReported = true;
+                _journal.Append(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"[WRN] Log file '{path}' could not be rolled over to '{path}.1', so it grows past the size cap: {ex.Message}"));
+            }
+        }
+
         return OpenLogFile(path);
     }
 
-    // UTF-8 takes at most 3 bytes per UTF-16 char, so the cut line always fits an empty file.
+    // UTF-8 takes at most 3 bytes per UTF-16 char, so the cut line always fits an empty file;
+    // an oversized ASCII line therefore keeps only about a third of the cap.
     private static string FitToEmptyFile(string line, int newLineBytes)
     {
         var maxChars = (MaxFileBytes - newLineBytes) / 3;
-        return line.Length > maxChars && LogEncoding.GetByteCount(line) + newLineBytes > MaxFileBytes
-            ? line[..maxChars]
-            : line;
+        if (line.Length <= maxChars || LogEncoding.GetByteCount(line) + newLineBytes <= MaxFileBytes)
+        {
+            return line;
+        }
+
+        return char.IsHighSurrogate(line[maxChars - 1]) ? line[..(maxChars - 1)] : line[..maxChars];
     }
 
     private static string ShortLevel(LogLevel level) => level switch
