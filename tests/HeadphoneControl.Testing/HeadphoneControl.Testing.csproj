@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\HeadphoneControl.Protocol\HeadphoneControl.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\HeadphoneControl.Core\HeadphoneControl.Core.csproj" />
   </ItemGroup>
 
 </Project>

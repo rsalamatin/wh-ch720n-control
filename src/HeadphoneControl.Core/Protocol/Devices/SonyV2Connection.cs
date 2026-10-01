@@ -29,7 +29,7 @@ namespace HeadphoneControl.Protocol.Devices;
 /// Events are raised in order from the session's dispatch task, never after <see cref="DisposeAsync"/> returns.
 /// </para>
 /// </remarks>
-public sealed class SonyV2Connection : IAsyncDisposable
+internal sealed class SonyV2Connection : IAsyncDisposable
 {
     private readonly ProtocolSession _session;
     private readonly ILogger<SonyV2Connection> _logger;

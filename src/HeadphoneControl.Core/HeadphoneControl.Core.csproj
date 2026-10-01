@@ -1,12 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Platform-neutral on purpose: platform backends plug in below it through IHeadsetConnector. -->
+  <!-- Platform-neutral on purpose: framing, session, commands and the headset lifecycle must be testable without WinRT or hardware; platform backends plug in through IHeadsetConnector. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\HeadphoneControl.Protocol\HeadphoneControl.Protocol.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="HeadphoneControl.Core.Tests" />
   </ItemGroup>
 
 </Project>

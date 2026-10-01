@@ -8,18 +8,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The solution is `HeadphoneControl.sln`:
 - **`src/HeadphoneControl`:** the Avalonia app (`net10.0-windows10.0.22621.0`). `--simulated` uses `Simulation/`, a byte-level `IHeadsetConnector` that speaks the real frame protocol, behind the same `HeadsetController` as the headset. `App.CreateDevice` is the composition root and the only place that picks the platform backend.
-- **`src/HeadphoneControl.Protocol`:** platform-neutral `net10.0` code:
-  - framing;
-  - session (ACK/sequence, request matching, notifications);
-  - V2 commands;
-  - `SonyV2Connection` (one confirmed V2 link);
-  - the device state contracts (`IHeadphoneDevice`, `DeviceState`) and the `ITransport` byte stream.
-- **`src/HeadphoneControl.Core`:** platform-neutral `net10.0`:
-  - `HeadsetController`, the real `IHeadphoneDevice`: the connection lifecycle, run as a `Channel` actor;
-  - the platform seam `IHeadsetConnector` (list paired headsets, connect to one), `DiscoveredHeadset`, `SonyServiceIds`;
-  - `HeadsetSelection` (display order, connect to the preferred headset).
+- **`src/HeadphoneControl.Core`:** the only platform-neutral library (`net10.0`).
+  - `Protocol/` (namespaces `HeadphoneControl.Protocol.*`), the wire-level code:
+    - `Framing/`: framing;
+    - `Session/`: session (ACK/sequence, request matching, notifications);
+    - `Commands/`: V2 commands;
+    - `Devices/`: `SonyV2Connection` (one confirmed V2 link) and the device state contracts (`IHeadphoneDevice`, `DeviceState`);
+    - `Transport/`: the `ITransport` byte stream.
+  - The root (namespace `HeadphoneControl.Core`):
+    - `HeadsetController`, the real `IHeadphoneDevice`: the connection lifecycle, run as a `Channel` actor;
+    - the platform seam `IHeadsetConnector` (list paired headsets, connect to one), `DiscoveredHeadset`, `SonyServiceIds`;
+    - `HeadsetSelection` (display order, connect to the preferred headset).
+  - The former `HeadphoneControl.Protocol` project was merged into Core on 2026-10-01: same TFM and dependencies, and Core depended on Protocol, so every consumer of Core pulled in both. `SonyV2Connection`, `DeviceSettings` and `Received<T>` are internal (visible to Core.Tests).
 - **`src/HeadphoneControl.Platform.Windows`:** the Windows `IHeadsetConnector` (`RfcommConnector`), with WinRT discovery, `RfcommTransport` and the HRESULT error mapping. Everything but `RfcommConnector` is internal.
-- **Tests:** TUnit projects `tests/HeadphoneControl.Protocol.Tests`, `tests/HeadphoneControl.Core.Tests`, `tests/HeadphoneControl.Platform.Windows.Tests` and `tests/HeadphoneControl.Tests`. The shared fakes (`FakeTransport`, `FakeHeadset`, `HookedLoggerFactory`) live in the class library `tests/HeadphoneControl.Testing`. The `[Explicit]` hardware tests (`RfcommHardwareTests` in Platform.Windows.Tests, `HeadphoneDeviceHardwareTests` in HeadphoneControl.Tests) need the paired headset.
+- **Tests:** TUnit projects `tests/HeadphoneControl.Core.Tests` (protocol tests under `Protocol/`), `tests/HeadphoneControl.Platform.Windows.Tests` and `tests/HeadphoneControl.Tests`. The shared fakes (`FakeTransport`, `FakeHeadset`, `HookedLoggerFactory`) live in the class library `tests/HeadphoneControl.Testing`. The `[Explicit]` hardware tests (`RfcommHardwareTests` in Platform.Windows.Tests, `HeadphoneDeviceHardwareTests` in HeadphoneControl.Tests) need the paired headset.
 - **Architecture refactor:** done on 2026-10-01; the design and its history are in `docs/architecture-refactor-plan.md`.
 
 Build output goes to `artifacts/` (`UseArtifactsOutput`). When several agents build at the same time, each passes `-p:Lane=<name>` so it builds into `artifacts/lanes/<name>` and doesn't lock another agent's files. Lane folders are disposable.
@@ -41,11 +43,10 @@ Load the `git` skill (`.claude/skills/git/SKILL.md`) before any git command.
 dotnet build HeadphoneControl.sln
 dotnet run --project src/HeadphoneControl                 # real headset; add "-- --simulated" to run without hardware
 dotnet run --project src/HeadphoneControl -- --verbose    # also log raw protocol frames (Debug)
-dotnet test --project tests/HeadphoneControl.Protocol.Tests   # Microsoft.Testing.Platform runner (global.json)
-dotnet test --project tests/HeadphoneControl.Core.Tests
+dotnet test --project tests/HeadphoneControl.Core.Tests        # Microsoft.Testing.Platform runner (global.json)
 dotnet test --project tests/HeadphoneControl.Platform.Windows.Tests
 dotnet test --project tests/HeadphoneControl.Tests
-dotnet test --project tests/HeadphoneControl.Protocol.Tests --treenode-filter "/*/*/FrameCodecTests/*"   # subset
+dotnet test --project tests/HeadphoneControl.Core.Tests --treenode-filter "/*/*/FrameCodecTests/*"   # subset
 dotnet test --project tests/HeadphoneControl.Tests -- --treenode-filter "/*/*/HeadphoneDeviceHardwareTests/*"   # [Explicit] read-only hardware test
 ```
 

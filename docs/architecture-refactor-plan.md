@@ -9,6 +9,7 @@ Agreed on 2026-09-29. **All steps are done** (2026-10-01): 1 and 2a on 2026-09-3
 - **Step 4:** merged; `--simulated` runs the byte-level simulator behind `HeadsetController`.
 - **Step 3:** `HeadsetController` owns debounce (`EditPacing`), coalescing per `SettingGroup` (a replaced edit completes as `EditOutcome.Superseded` and sends nothing) and `HasPendingEdit`, with `StateChanged` raised when a group's last pending edit ends. `MainViewModel` keeps binding, strings and status text. Picking Manual sends the curve on screen as a custom equalizer.
 - The backlog candidates found in the reviews moved to `backlog.md` (section "Protocol session").
+- **Follow-up (2026-10-01):** `HeadphoneControl.Protocol` merged into `HeadphoneControl.Core` (now `Core/Protocol/`, namespaces unchanged), and `Protocol.Tests` into `Core.Tests` (under `Protocol/`). Both projects had the same TFM and dependencies, Core depended on Protocol so every consumer of Core pulled in both, and the split forced types to be public only to cross the assembly boundary.
 - **Still to do:** run `docs/hardware-smoke-test.md` once on the real headset.
 
 **Goal:** make the app pluggable so another platform (Linux/BlueZ) *can* be added later, and move the headset control logic out of the UI into its own layer. **Linux itself is out of scope for now**: only the seam is built.
@@ -32,9 +33,10 @@ Agreed on 2026-09-29. **All steps are done** (2026-10-01): 1 and 2a on 2026-09-3
 ## Target layering
 
 ```
-HeadphoneControl.Protocol          net10.0            framing, session, V2CommandSet (unchanged)
 HeadphoneControl.Core              net10.0            IHeadsetConnector, DiscoveredHeadset, SonyServiceIds,
-                                                      SonyV2Connection (one link), HeadsetController (lifecycle)
+                                                      HeadsetController (lifecycle);
+                                                      Protocol/: framing, session, V2CommandSet,
+                                                      SonyV2Connection (one link)
 HeadphoneControl.Platform.Windows  net10.0-windows…   WinRT discovery, RfcommTransport, TransportErrors
 HeadphoneControl.Platform.Linux    (later)            BlueZ: D-Bus Profile1 / AF_BLUETOOTH RFCOMM socket
 HeadphoneControl (Avalonia)        see Step 1         view models bind to HeadsetController
@@ -101,7 +103,7 @@ Each step keeps every test green (440 on 2026-09-28) and gets a review pass befo
      - Its exception set is documented exactly. 2b maps exceptions from that list.
    - **2b:** `HeadsetController` replaces `HeadphoneDevice`'s lifecycle. Its `Channel` actor takes notifications and link loss as messages, which removes `_operationLock`, `_stateLock` and the reference-check guards. `ITransport` slimming happens here too.
    - **Open decisions for 2b, from the 2a review:**
-     - Should `SonyV2Connection` and `DeviceSettings` become `internal` (with `InternalsVisibleTo` for the tests), or stay public once they move to Core? That depends on whether `LinkState` is public.
+     - Should `SonyV2Connection` and `DeviceSettings` become `internal` (with `InternalsVisibleTo` for the tests), or stay public once they move to Core? That depends on whether `LinkState` is public. **Resolved 2026-10-01:** internal (with `Received<T>`), visible to `Core.Tests`.
      - Consider a `Task Completion` on the connection that completes on link loss. The actor could then await it and post a single message, with no gap between checking and subscribing.
      - Once `HeadphoneDevice` is gone, the connection must be the only thing that logs "Link to {Name} lost".
 3. **Thin out `MainViewModel`.**

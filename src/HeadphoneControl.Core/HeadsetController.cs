@@ -7,8 +7,8 @@ using Microsoft.Extensions.Logging;
 namespace HeadphoneControl.Core;
 
 /// <summary>
-/// The real headset behind <see cref="IHeadphoneDevice"/>: owns the connection lifecycle and opens a
-/// <see cref="SonyV2Connection"/> on every connect. No V2 command is sent until both the transport's service and the
+/// The real headset behind <see cref="IHeadphoneDevice"/>: owns the connection lifecycle and opens one
+/// confirmed V2 link on every connect. No V2 command is sent until both the transport's service and the
 /// init handshake confirm a V2 device.
 /// </summary>
 /// <remarks>
