@@ -342,7 +342,7 @@ public sealed class HeadsetController : IHeadphoneDevice
             .ConfigureAwait(false);
     }
 
-    // The actor must survive a failing StateChanged handler, or every later operation would hang.
+    // The actor must survive any failure here, or every later operation would hang.
     private async Task GuardAsync(Func<Task> step, string what)
     {
         try
@@ -506,7 +506,15 @@ public sealed class HeadsetController : IHeadphoneDevice
         }
 
         _state = updated;
-        StateChanged?.Invoke(this, updated);
+        try
+        {
+            StateChanged?.Invoke(this, updated);
+        }
+        catch (Exception ex)
+        {
+            // A subscriber's bug must not fail an operation the headset already applied, nor stop the actor.
+            _logger.LogError(ex, "A StateChanged handler of {Name} failed", Name);
+        }
     }
 
     private enum Setting

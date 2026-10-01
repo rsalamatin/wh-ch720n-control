@@ -608,6 +608,31 @@ public class HeadsetControllerTests
     }
 
     [Test]
+    public async Task WhenStateChangedHandlerThrowsDuringASetThenTheSetSucceeds()
+    {
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset);
+        await controller.ConnectAsync(CancellationToken.None);
+        controller.StateChanged += (_, _) => throw new InvalidOperationException("Handler failure.");
+
+        var act = () => controller.SetDseeAsync(false, CancellationToken.None).WaitAsync(Patience);
+
+        await Assert.That(act).ThrowsNothing();
+    }
+
+    [Test]
+    public async Task WhenStateChangedHandlerThrowsDuringConnectThenStateIsConnected()
+    {
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset);
+        controller.StateChanged += (_, _) => throw new InvalidOperationException("Handler failure.");
+
+        await controller.ConnectAsync(CancellationToken.None);
+
+        await Assert.That(controller.State.Connection).IsEqualTo(ConnectionStatus.Connected);
+    }
+
+    [Test]
     public async Task WhenTokenIsAlreadyCancelledThenConnectThrowsOperationCanceled()
     {
         var headset = new FakeHeadset();

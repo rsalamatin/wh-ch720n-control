@@ -56,7 +56,25 @@ public sealed record BatteryState(int Level, bool IsCharging);
 public sealed record NoiseControlState(NoiseControlMode Mode, bool FocusOnVoice, int AmbientLevel);
 
 /// <summary>Clear bass and each of the 5 bands are in -10..10 (wire value minus 10).</summary>
-public sealed record EqualizerState(EqualizerPreset Preset, int ClearBass, IReadOnlyList<int> Bands);
+/// <remarks>Equality compares the band levels, not the list instance.</remarks>
+public sealed record EqualizerState(EqualizerPreset Preset, int ClearBass, IReadOnlyList<int> Bands)
+{
+    public bool Equals(EqualizerState? other) =>
+        other is not null && Preset == other.Preset && ClearBass == other.ClearBass && Bands.SequenceEqual(other.Bands);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Preset);
+        hash.Add(ClearBass);
+        foreach (var band in Bands)
+        {
+            hash.Add(band);
+        }
+
+        return hash.ToHashCode();
+    }
+}
 
 /// <summary>
 /// Immutable snapshot of everything known about the headset. Null members are not (yet) known.
