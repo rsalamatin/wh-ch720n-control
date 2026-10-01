@@ -100,7 +100,7 @@ public class SonyV2ConnectionTests
 
         var settings = await connection.ReadAllAsync(CancellationToken.None);
 
-        await Assert.That(settings.Battery).IsEqualTo(new BatteryState(80, true));
+        await Assert.That(settings.Battery?.Value).IsEqualTo(new BatteryState(80, true));
     }
 
     [Test]
@@ -126,7 +126,7 @@ public class SonyV2ConnectionTests
 
         var settings = await ReadAllPastTimeoutAsync(connection, headset, time, 0xE6);
 
-        await Assert.That(settings.FirmwareVersion).IsEqualTo("1.0.2");
+        await Assert.That(settings.FirmwareVersion?.Value).IsEqualTo("1.0.2");
     }
 
     [Test]
@@ -149,7 +149,7 @@ public class SonyV2ConnectionTests
 
         var equalizer = await connection.TryReadEqualizerAsync(CancellationToken.None);
 
-        await Assert.That(equalizer!.Bands).IsEquivalentTo([1, 2, 3, 4, 5]);
+        await Assert.That(equalizer?.Value.Bands).IsEquivalentTo([1, 2, 3, 4, 5]);
     }
 
     [Test]
@@ -184,7 +184,7 @@ public class SonyV2ConnectionTests
         var headset = new FakeHeadset();
         await using var connection = await OpenAsync(headset);
         var received = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-        connection.NotificationReceived += (_, payload) => received.TrySetResult(payload.ToArray());
+        connection.NotificationReceived += (_, notification) => received.TrySetResult(notification.Payload.ToArray());
 
         headset.Notify(0x25, 0x00, 42, 0);
 
@@ -228,14 +228,29 @@ public class SonyV2ConnectionTests
     }
 
     [Test]
-    public async Task WhenSettingIsUnansweredThenApplyKeepsTheCurrentValue()
+    public async Task WhenSettingIsAcknowledgedAfterAReadThenTheAckOrdinalIsHigher()
     {
-        var current = DeviceState.Disconnected with { Battery = new BatteryState(42, false) };
-        var settings = new DeviceSettings(null, null, null, true, null, null);
+        var headset = new FakeHeadset();
+        await using var connection = await OpenAsync(headset);
+        var settings = await connection.ReadAllAsync(CancellationToken.None);
 
-        var updated = settings.ApplyTo(current);
+        var acknowledged = await connection.SetDseeAsync(false, CancellationToken.None);
 
-        await Assert.That(updated.Battery).IsEqualTo(new BatteryState(42, false));
+        await Assert.That(acknowledged).IsGreaterThan(settings.Codec!.Value.Ordinal);
+    }
+
+    [Test]
+    public async Task WhenNotificationArrivesAfterASettingThenItsOrdinalIsHigher()
+    {
+        var headset = new FakeHeadset();
+        await using var connection = await OpenAsync(headset);
+        var received = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+        connection.NotificationReceived += (_, notification) => received.TrySetResult(notification.Ordinal);
+        var acknowledged = await connection.SetDseeAsync(false, CancellationToken.None);
+
+        headset.Notify(0x25, 0x00, 42, 0);
+
+        await Assert.That(await received.Task.WaitAsync(Patience)).IsGreaterThan(acknowledged);
     }
 
     private static async Task<SonyV2Connection> OpenAsync(

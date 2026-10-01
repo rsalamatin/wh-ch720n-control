@@ -103,7 +103,7 @@ public class ProtocolSessionAckTests
     [Test]
     public async Task WhenAckArrivesThenSendAsyncCompletes()
     {
-        var transport = new FakeTransport() { AutoAck = true };
+        var transport = new FakeTransport { AutoAck = true };
         await using var session = await StartSessionAsync(transport);
 
         await session.SendAsync(new byte[] { 0x00, 0x00 }, PatienceToken());
@@ -114,7 +114,7 @@ public class ProtocolSessionAckTests
     [Test]
     public async Task WhenSendAsyncIsCalledThenWireBytesMatchRealDeviceCapture()
     {
-        var transport = new FakeTransport() { AutoAck = true };
+        var transport = new FakeTransport { AutoAck = true };
         await using var session = await StartSessionAsync(transport);
 
         await session.SendAsync(new byte[] { 0x00, 0x00 }, PatienceToken());
@@ -139,7 +139,7 @@ public class ProtocolSessionAckTests
     [Test]
     public async Task WhenEveryWriteIsAckedThenOutgoingSequenceAlternates()
     {
-        var transport = new FakeTransport() { AutoAck = true };
+        var transport = new FakeTransport { AutoAck = true };
         await using var session = await StartSessionAsync(transport);
 
         await session.SendAsync(new byte[] { 0x01 }, PatienceToken());
@@ -156,7 +156,7 @@ public class ProtocolSessionAckTests
     {
         // The real WH-CH720N ACKs seq n with 1 - n; an ACK carrying n is a late ACK for an earlier send.
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport() { Responder = frame => [Ack(frame.Sequence)] };
+        var transport = new FakeTransport { Responder = frame => [Ack(frame.Sequence)] };
         await using var session = await StartSessionAsync(transport, time);
         var send = session.SendAsync(new byte[] { 0x01 }, PatienceToken());
         await transport.WaitForWrittenFramesAsync(1, PatienceToken());
@@ -198,7 +198,7 @@ public class ProtocolSessionAckTests
         // is lost. Reads are capped at one ACK frame, so the trailing garbage byte is decoded in a later read and
         // its rejection proves the ACK was handled before B's write completes.
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport() { MaxReadChunk = FrameCodec.Encode(Ack(1)).Length };
+        var transport = new FakeTransport { MaxReadChunk = FrameCodec.Encode(Ack(1)).Length };
         var logger = new RejectionSignallingLogger();
         await using var session = new ProtocolSession(transport, logger, time);
         await session.StartAsync(CancellationToken.None);

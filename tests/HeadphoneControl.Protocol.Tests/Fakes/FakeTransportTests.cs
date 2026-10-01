@@ -21,7 +21,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenMaxReadChunkIsSetThenReadsNeverExceedIt()
     {
-        var transport = new FakeTransport() { MaxReadChunk = 2 };
+        var transport = new FakeTransport { MaxReadChunk = 2 };
         transport.QueueIncoming([0x01, 0x02, 0x03]);
 
         var read = await transport.ReceiveAsync(new byte[16], CancellationToken.None);
@@ -102,7 +102,7 @@ public class FakeTransportTests
     [Test]
     public async Task WhenAutoAckIsOnThenWrittenDataFrameIsAnsweredWithAck()
     {
-        var transport = new FakeTransport() { AutoAck = true };
+        var transport = new FakeTransport { AutoAck = true };
         await transport.SendAsync(FrameCodec.Encode(new Frame(FrameType.DataMdr, 0, new byte[] { 0x00 })), CancellationToken.None);
         var buffer = new byte[64];
 

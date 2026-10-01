@@ -23,18 +23,18 @@ public class ProtocolSessionRequestTests
 
         var reply = await session.RequestAsync(new byte[] { 0x00, 0x00 }, 0x01, null, PatienceToken());
 
-        await Assert.That(Hex(reply)).IsEqualTo("0100030010020000");
+        await Assert.That(Hex(reply.Payload)).IsEqualTo("0100030010020000");
     }
 
     [Test]
     public async Task WhenResponseMatchesOpcodeThenRequestReturnsItsPayload()
     {
-        var transport = new FakeTransport() { Responder = _ => [Ack(1), Data(0, 0x23, 0x00, 0x64, 0x00)] };
+        var transport = new FakeTransport { Responder = _ => [Ack(1), Data(0, 0x23, 0x00, 0x64, 0x00)] };
         await using var session = await StartSessionAsync(transport);
 
         var reply = await session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
 
-        await Assert.That(Hex(reply)).IsEqualTo("23006400");
+        await Assert.That(Hex(reply.Payload)).IsEqualTo("23006400");
     }
 
     [Test]
@@ -48,7 +48,7 @@ public class ProtocolSessionRequestTests
 
         var reply = await session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, 0x00, PatienceToken());
 
-        await Assert.That(Hex(reply)).IsEqualTo("23006400");
+        await Assert.That(Hex(reply.Payload)).IsEqualTo("23006400");
     }
 
     [Test]
@@ -77,14 +77,14 @@ public class ProtocolSessionRequestTests
 
         var reply = await session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
 
-        await Assert.That(Hex(reply)).IsEqualTo("23006400");
+        await Assert.That(Hex(reply.Payload)).IsEqualTo("23006400");
     }
 
     [Test]
     public async Task WhenOnlyUnrelatedFramesArriveThenRequestThrowsTimeoutException()
     {
         var time = new FakeTimeProvider();
-        var transport = new FakeTransport() { Responder = _ => [Ack(1), Data(0, 0x69, 0x17, 0x01)] };
+        var transport = new FakeTransport { Responder = _ => [Ack(1), Data(0, 0x69, 0x17, 0x01)] };
         await using var session = await StartSessionAsync(transport, time);
         var notified = NextNotificationAsync(session);
         var request = session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
@@ -107,7 +107,7 @@ public class ProtocolSessionRequestTests
 
         var reply = await session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
 
-        await Assert.That(Hex(reply)).IsEqualTo("23006400");
+        await Assert.That(Hex(reply.Payload)).IsEqualTo("23006400");
     }
 
     [Test]
@@ -127,7 +127,7 @@ public class ProtocolSessionRequestTests
 
         var reply = await session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
 
-        await Assert.That(Hex(reply)).IsEqualTo("23006400");
+        await Assert.That(Hex(reply.Payload)).IsEqualTo("23006400");
     }
 
     [Test]
@@ -144,7 +144,7 @@ public class ProtocolSessionRequestTests
 
         var reply = await session.RequestAsync(new byte[] { 0x28, 0x00 }, 0x29, null, PatienceToken());
 
-        await Assert.That(Hex(reply)).IsEqualTo("290001");
+        await Assert.That(Hex(reply.Payload)).IsEqualTo("290001");
     }
 
     [Test]
@@ -188,7 +188,7 @@ public class ProtocolSessionRequestTests
 
         var reply = await session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
 
-        await Assert.That(Hex(reply)).IsEqualTo("23003E00");
+        await Assert.That(Hex(reply.Payload)).IsEqualTo("23003E00");
     }
 
     [Test]
@@ -204,7 +204,7 @@ public class ProtocolSessionRequestTests
 
         var reply = await session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken());
 
-        await Assert.That(Hex(reply)).IsEqualTo("23006400");
+        await Assert.That(Hex(reply.Payload)).IsEqualTo("23006400");
     }
 
     [Test]
@@ -246,7 +246,7 @@ public class ProtocolSessionRequestTests
 
             // Blocking on purpose: this would deadlock if handlers ran on the receive loop.
             var reply = session.RequestAsync(new byte[] { 0x22, 0x00 }, 0x23, null, PatienceToken()).GetAwaiter().GetResult();
-            handlerReply.TrySetResult(Hex(reply));
+            handlerReply.TrySetResult(Hex(reply.Payload));
         };
 
         transport.QueueIncoming(Data(0, 0x69, 0x17));

@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using HeadphoneControl.Protocol.Devices;
+using HeadphoneControl.Protocol.Session;
 using HeadphoneControl.Protocol.Transport;
 using Microsoft.Extensions.Logging;
 
@@ -13,7 +14,7 @@ namespace HeadphoneControl.Core;
 /// <remarks>
 /// One actor processes the user's operations and the link's events (notifications, link loss) in arrival order, so
 /// nothing that changes the state runs concurrently. An event that arrives while an operation runs is applied after
-/// that operation.
+/// that operation, and only to the settings for which it is the most recently received frame.
 /// </remarks>
 public sealed class HeadsetController : IHeadphoneDevice
 {
@@ -26,7 +27,10 @@ public sealed class HeadsetController : IHeadphoneDevice
         Channel.CreateUnbounded<Message>(new UnboundedChannelOptions { SingleReader = true });
     private readonly Task _actor;
 
-    // Only the actor touches _link and writes _state; State reads _state from any thread.
+    // Per Setting, the receive ordinal of the frame (reply, ACK or notification) that last set it on the current link.
+    private readonly long[] _setAt = new long[Enum.GetValues<Setting>().Length];
+
+    // Only the actor touches _link and _setAt and writes _state; State reads _state from any thread.
     private LinkState _link = new Disconnected();
     private volatile DeviceState _state = DeviceState.Disconnected;
     private int _disposeStarted;
@@ -65,7 +69,7 @@ public sealed class HeadsetController : IHeadphoneDevice
             async _ =>
             {
                 await ReleaseLinkAsync().ConfigureAwait(false);
-                Publish(_ => DeviceState.Disconnected);
+                Publish(DeviceState.Disconnected);
             },
             cancellationToken);
 
@@ -74,7 +78,7 @@ public sealed class HeadsetController : IHeadphoneDevice
             async (link, ct) =>
             {
                 var settings = await link.ReadAllAsync(ct).ConfigureAwait(false);
-                Publish(settings.ApplyTo);
+                Publish(Merge(_state, settings));
             },
             cancellationToken);
 
@@ -83,6 +87,7 @@ public sealed class HeadsetController : IHeadphoneDevice
         ArgumentNullException.ThrowIfNull(state);
         return SendSettingAsync(
             (link, ct) => link.SetNoiseControlAsync(state, ct),
+            Setting.NoiseControl,
             current => current with { NoiseControl = NormalizeNoiseControl(state) },
             cancellationToken);
     }
@@ -91,7 +96,7 @@ public sealed class HeadsetController : IHeadphoneDevice
         RunConnectedAsync(
             async (link, ct) =>
             {
-                await link.SetEqualizerPresetAsync(preset, ct).ConfigureAwait(false);
+                var acknowledged = await link.SetEqualizerPresetAsync(preset, ct).ConfigureAwait(false);
 
                 // The device owns each preset's band curve, so it is re-read. Once the SET is ACKed the caller's
                 // cancellation no longer applies: abandoning the re-read would leave the old preset's bands showing.
@@ -102,8 +107,12 @@ public sealed class HeadsetController : IHeadphoneDevice
                 }
 
                 // Unknown rather than the previous preset's bands, which would let a later band edit send a curve the
-                // user never saw. A late reply or notification is queued behind this operation, so it still wins.
-                Publish(current => current with { Equalizer = equalizer });
+                // user never saw. Stamped with the ACK, so a late curve received after it still wins and an older
+                // one, e.g. the late reply to an earlier preset's re-read, does not.
+                if (Claim(Setting.Equalizer, equalizer?.Ordinal ?? acknowledged))
+                {
+                    Publish(_state with { Equalizer = equalizer?.Value });
+                }
             },
             cancellationToken);
 
@@ -113,6 +122,7 @@ public sealed class HeadsetController : IHeadphoneDevice
         var snapshot = bands.ToArray();
         return SendSettingAsync(
             (link, ct) => link.SetCustomEqualizerAsync(clearBass, snapshot, ct),
+            Setting.Equalizer,
             current => current with { Equalizer = new EqualizerState(EqualizerPreset.Manual, clearBass, snapshot) },
             cancellationToken);
     }
@@ -120,6 +130,7 @@ public sealed class HeadsetController : IHeadphoneDevice
     public Task SetDseeAsync(bool enabled, CancellationToken cancellationToken) =>
         SendSettingAsync(
             (link, ct) => link.SetDseeAsync(enabled, ct),
+            Setting.Dsee,
             current => current with { DseeEnabled = enabled },
             cancellationToken);
 
@@ -148,6 +159,8 @@ public sealed class HeadsetController : IHeadphoneDevice
         ex is IOException or TimeoutException or NotSupportedException or FormatException
             or InvalidOperationException or ArgumentException;
 
+    private static bool Differs<T>(T current, T next) => !EqualityComparer<T>.Default.Equals(current, next);
+
     private async Task ConnectCoreAsync(CancellationToken cancellationToken)
     {
         if (_link is Connected)
@@ -156,11 +169,14 @@ public sealed class HeadsetController : IHeadphoneDevice
         }
 
         _link = new Connecting();
-        Publish(_ => DeviceState.Disconnected with { Connection = ConnectionStatus.Connecting });
+        Publish(DeviceState.Disconnected with { Connection = ConnectionStatus.Connecting });
         SonyV2Connection? link = null;
         try
         {
             link = await OpenLinkAsync(cancellationToken).ConfigureAwait(false);
+
+            // Ordinals restart with every session.
+            Array.Clear(_setAt);
             var settings = await link.ReadAllAsync(cancellationToken).ConfigureAwait(false);
 
             // The link's LinkDropped message waits behind this operation, so a drop after the last reply is caught
@@ -172,7 +188,7 @@ public sealed class HeadsetController : IHeadphoneDevice
 
             // Connected and the settings are published together, so the UI never sees "connected, all unknown".
             _link = new Connected(link);
-            Publish(current => settings.ApplyTo(current) with
+            Publish(Merge(_state, settings) with
             {
                 Connection = ConnectionStatus.Connected,
                 Generation = ProtocolGeneration.V2,
@@ -191,8 +207,8 @@ public sealed class HeadsetController : IHeadphoneDevice
                 await CloseAsync(link).ConfigureAwait(false);
             }
 
-            _link = cancelled ? new Disconnected() : new Failed(ex);
-            Publish(_ => cancelled
+            _link = cancelled ? new Disconnected() : new Failed();
+            Publish(cancelled
                 ? DeviceState.Disconnected
                 : DeviceState.Disconnected with { Connection = ConnectionStatus.Failed });
             throw;
@@ -210,15 +226,57 @@ public sealed class HeadsetController : IHeadphoneDevice
         return link;
     }
 
+    // Records that the frame with this ordinal set the setting, unless a later frame already did. Operations and
+    // queued notifications reach the actor out of receive order (a notification received before an operation's ACK
+    // is applied after that operation), so an older frame must not overwrite a newer one.
+    private bool Claim(Setting setting, long ordinal)
+    {
+        if (ordinal <= _setAt[(int)setting])
+        {
+            return false;
+        }
+
+        _setAt[(int)setting] = ordinal;
+        return true;
+    }
+
+    // An unanswered setting keeps what the state already has, e.g. a value a newer notification delivered.
+    private DeviceState Merge(DeviceState current, DeviceSettings settings) => current with
+    {
+        Battery = settings.Battery is { } battery && Claim(Setting.Battery, battery.Ordinal)
+            ? battery.Value
+            : current.Battery,
+        NoiseControl = settings.NoiseControl is { } noise && Claim(Setting.NoiseControl, noise.Ordinal)
+            ? noise.Value
+            : current.NoiseControl,
+        Equalizer = settings.Equalizer is { } equalizer && Claim(Setting.Equalizer, equalizer.Ordinal)
+            ? equalizer.Value
+            : current.Equalizer,
+        DseeEnabled = settings.DseeEnabled is { } dsee && Claim(Setting.Dsee, dsee.Ordinal)
+            ? dsee.Value
+            : current.DseeEnabled,
+        FirmwareVersion = settings.FirmwareVersion is { } firmware && Claim(Setting.FirmwareVersion, firmware.Ordinal)
+            ? firmware.Value
+            : current.FirmwareVersion,
+        Codec = settings.Codec is { } codec && Claim(Setting.Codec, codec.Ordinal)
+            ? codec.Value
+            : current.Codec,
+    };
+
     private Task SendSettingAsync(
-        Func<SonyV2Connection, CancellationToken, Task> send,
+        Func<SonyV2Connection, CancellationToken, Task<long>> send,
+        Setting setting,
         Func<DeviceState, DeviceState> apply,
         CancellationToken cancellationToken) =>
         RunConnectedAsync(
             async (link, ct) =>
             {
-                await send(link, ct).ConfigureAwait(false);
-                Publish(apply);
+                // Stamped even when the value does not change, so an older echo cannot undo this SET afterwards.
+                var acknowledged = await send(link, ct).ConfigureAwait(false);
+                if (Claim(setting, acknowledged))
+                {
+                    Publish(apply(_state));
+                }
             },
             cancellationToken);
 
@@ -234,14 +292,15 @@ public sealed class HeadsetController : IHeadphoneDevice
     private async Task RunAsync(Func<CancellationToken, Task> body, CancellationToken cancellationToken)
     {
         var operation = new Operation(body, cancellationToken);
+
+        // Registered before the operation is queued, so a token that is already cancelled abandons it before the
+        // actor can start it. A running operation observes the token itself.
+        using var registration = cancellationToken.Register(operation.CancelIfQueued);
         if (!_mailbox.Writer.TryWrite(operation))
         {
             throw new ObjectDisposedException(GetType().Name);
         }
 
-        // A caller that gives up while its operation is still queued is released at once; a running operation
-        // observes the token itself.
-        using var registration = cancellationToken.Register(operation.CancelIfQueued);
         await operation.Completion.Task.ConfigureAwait(false);
     }
 
@@ -255,28 +314,45 @@ public sealed class HeadsetController : IHeadphoneDevice
                 continue;
             }
 
-            try
-            {
-                switch (message)
-                {
-                    case NotificationArrived notification:
-                        ApplyNotification(notification);
-                        break;
-                    case LinkDropped dropped:
-                        await OnLinkDroppedAsync(dropped).ConfigureAwait(false);
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                // The actor must survive a failing StateChanged handler, or every later operation would hang.
-                _logger.LogError(ex, "Handling {Message} for {Name} failed", message.GetType().Name, Name);
-            }
+            await GuardAsync(
+                    async () =>
+                    {
+                        switch (message)
+                        {
+                            case NotificationArrived notification:
+                                ApplyNotification(notification);
+                                break;
+                            case LinkDropped dropped:
+                                await OnLinkDroppedAsync(dropped).ConfigureAwait(false);
+                                break;
+                        }
+                    },
+                    message.GetType().Name)
+                .ConfigureAwait(false);
         }
 
         // Disposed: the mailbox is closed and every queued operation was refused.
-        await ReleaseLinkAsync().ConfigureAwait(false);
-        Publish(_ => DeviceState.Disconnected);
+        await GuardAsync(
+                async () =>
+                {
+                    await ReleaseLinkAsync().ConfigureAwait(false);
+                    Publish(DeviceState.Disconnected);
+                },
+                "Dispose")
+            .ConfigureAwait(false);
+    }
+
+    // The actor must survive a failing StateChanged handler, or every later operation would hang.
+    private async Task GuardAsync(Func<Task> step, string what)
+    {
+        try
+        {
+            await step().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Handling {Message} for {Name} failed", what, Name);
+        }
     }
 
     // Links the operation to the controller lifetime and enforces the IHeadphoneDevice exception contract: platform
@@ -288,13 +364,19 @@ public sealed class HeadsetController : IHeadphoneDevice
             return;
         }
 
+        var callerToken = operation.CallerToken;
+        if (callerToken.IsCancellationRequested)
+        {
+            operation.Completion.TrySetCanceled(callerToken);
+            return;
+        }
+
         if (_lifetime.IsCancellationRequested)
         {
             operation.Completion.TrySetException(new ObjectDisposedException(GetType().Name));
             return;
         }
 
-        var callerToken = operation.CallerToken;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(callerToken, _lifetime.Token);
         try
         {
@@ -331,24 +413,48 @@ public sealed class HeadsetController : IHeadphoneDevice
             return;
         }
 
-        var payload = notification.Payload.Span;
+        var (payload, ordinal) = notification.Received;
         try
         {
-            var recognised = connected.Link.TryApplyNotification(_state, payload, out var next);
-            if (recognised && next != _state)
+            var current = _state;
+            if (!connected.Link.TryApplyNotification(current, payload.Span, out var next))
             {
-                Publish(_ => next);
+                _logger.LogDebug("Ignored notification {Payload}", Convert.ToHexString(payload.Span));
+                return;
+            }
+
+            // Only the settings this notification changes, and only where it is newer than what set them.
+            var merged = current with
+            {
+                Battery = Differs(current.Battery, next.Battery) && Claim(Setting.Battery, ordinal)
+                    ? next.Battery
+                    : current.Battery,
+                NoiseControl = Differs(current.NoiseControl, next.NoiseControl) && Claim(Setting.NoiseControl, ordinal)
+                    ? next.NoiseControl
+                    : current.NoiseControl,
+                Equalizer = Differs(current.Equalizer, next.Equalizer) && Claim(Setting.Equalizer, ordinal)
+                    ? next.Equalizer
+                    : current.Equalizer,
+                DseeEnabled = Differs(current.DseeEnabled, next.DseeEnabled) && Claim(Setting.Dsee, ordinal)
+                    ? next.DseeEnabled
+                    : current.DseeEnabled,
+            };
+            if (merged != current)
+            {
+                Publish(merged);
                 return;
             }
 
             // The headset echoes every SET as a notification, which usually matches the state the ACK set.
             _logger.LogDebug(
-                recognised ? "Notification {Payload} confirms the current state" : "Ignored notification {Payload}",
-                Convert.ToHexString(payload));
+                next == current
+                    ? "Notification {Payload} confirms the current state"
+                    : "Notification {Payload} is older than the current state",
+                Convert.ToHexString(payload.Span));
         }
         catch (FormatException ex)
         {
-            _logger.LogWarning(ex, "Malformed notification {Payload}", Convert.ToHexString(payload));
+            _logger.LogWarning(ex, "Malformed notification {Payload}", Convert.ToHexString(payload.Span));
         }
     }
 
@@ -360,18 +466,19 @@ public sealed class HeadsetController : IHeadphoneDevice
             return;
         }
 
-        _logger.LogWarning(dropped.Cause, "Link to {Name} lost", Name);
+        // The session already logged the drop with its cause; this only names the headset.
+        _logger.LogInformation("{Name} disconnected because the link was lost", Name);
         await ReleaseLinkAsync().ConfigureAwait(false);
-        Publish(_ => DeviceState.Disconnected);
+        Publish(DeviceState.Disconnected);
     }
 
     // Raised on the link's dispatch task; the actor handles them in order with everything else. After dispose the
     // mailbox is closed and the link is being released anyway, so a refused write needs no handling.
-    private void OnNotificationReceived(object? sender, ReadOnlyMemory<byte> payload) =>
-        _mailbox.Writer.TryWrite(new NotificationArrived((SonyV2Connection)sender!, payload));
+    private void OnNotificationReceived(object? sender, ReceivedPayload notification) =>
+        _mailbox.Writer.TryWrite(new NotificationArrived((SonyV2Connection)sender!, notification));
 
     private void OnLinkLost(object? sender, Exception? cause) =>
-        _mailbox.Writer.TryWrite(new LinkDropped((SonyV2Connection)sender!, cause));
+        _mailbox.Writer.TryWrite(new LinkDropped((SonyV2Connection)sender!));
 
     private async Task ReleaseLinkAsync()
     {
@@ -390,10 +497,9 @@ public sealed class HeadsetController : IHeadphoneDevice
         await link.DisposeAsync().ConfigureAwait(false);
     }
 
-    // Only the actor publishes, so the read-modify-write needs no lock.
-    private void Publish(Func<DeviceState, DeviceState> change)
+    // Only the actor publishes, so the read-modify-write around it needs no lock.
+    private void Publish(DeviceState updated)
     {
-        var updated = change(_state);
         if (updated == _state)
         {
             return;
@@ -401,6 +507,16 @@ public sealed class HeadsetController : IHeadphoneDevice
 
         _state = updated;
         StateChanged?.Invoke(this, updated);
+    }
+
+    private enum Setting
+    {
+        Battery,
+        NoiseControl,
+        Equalizer,
+        Dsee,
+        FirmwareVersion,
+        Codec,
     }
 
     // The connection lifecycle. Only Connected holds a link, so no operation can reach one in another state.
@@ -412,21 +528,33 @@ public sealed class HeadsetController : IHeadphoneDevice
 
     private sealed record Connected(SonyV2Connection Link) : LinkState;
 
-    private sealed record Failed(Exception Cause) : LinkState;
+    private sealed record Failed : LinkState;
 
-    private abstract record Message;
+    private abstract class Message;
 
-    private sealed record NotificationArrived(SonyV2Connection Source, ReadOnlyMemory<byte> Payload) : Message;
+    private sealed class NotificationArrived(SonyV2Connection source, ReceivedPayload received) : Message
+    {
+        public SonyV2Connection Source { get; } = source;
 
-    private sealed record LinkDropped(SonyV2Connection Source, Exception? Cause) : Message;
+        public ReceivedPayload Received { get; } = received;
+    }
 
-    private sealed record Operation(Func<CancellationToken, Task> Body, CancellationToken CallerToken) : Message
+    private sealed class LinkDropped(SonyV2Connection source) : Message
+    {
+        public SonyV2Connection Source { get; } = source;
+    }
+
+    private sealed class Operation(Func<CancellationToken, Task> body, CancellationToken callerToken) : Message
     {
         private const int Queued = 0;
         private const int Running = 1;
         private const int Abandoned = 2;
 
         private int _stage;
+
+        public Func<CancellationToken, Task> Body { get; } = body;
+
+        public CancellationToken CallerToken { get; } = callerToken;
 
         public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 

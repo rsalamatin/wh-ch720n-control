@@ -27,14 +27,15 @@ internal static class SessionTestHelpers
 
     public static CancellationToken PatienceToken() => new CancellationTokenSource(Patience).Token;
 
-    public static Task<string> NextNotificationAsync(ProtocolSession session, Func<Frame, bool>? predicate = null)
+    public static Task<string> NextNotificationAsync(
+        ProtocolSession session, Func<ReceivedPayload, bool>? predicate = null)
     {
         var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        session.NotificationReceived += (_, frame) =>
+        session.NotificationReceived += (_, notification) =>
         {
-            if (predicate is null || predicate(frame))
+            if (predicate is null || predicate(notification))
             {
-                received.TrySetResult(Hex(frame.Payload));
+                received.TrySetResult(Hex(notification.Payload));
             }
         };
         return received.Task.WaitAsync(Patience);

@@ -57,8 +57,11 @@ public sealed class ProtocolSession : IAsyncDisposable
     private byte _nextSequence;
     private byte? _expectedAckSequence;
     private byte? _lastDeviceSequence;
-    private TaskCompletionSource? _pendingAck;
+    private TaskCompletionSource<long>? _pendingAck;
     private PendingResponse? _pendingResponse;
+
+    // Written only by the receive loop.
+    private long _receivedFrames;
     private TransportException? _linkFailure;
     private bool _started;
     private bool _disposed;
@@ -75,7 +78,7 @@ public sealed class ProtocolSession : IAsyncDisposable
     }
 
     /// <summary>A DATA_MDR frame arrived that did not answer the pending request (unsolicited notification).</summary>
-    public event EventHandler<Frame>? NotificationReceived;
+    public event EventHandler<ReceivedPayload>? NotificationReceived;
 
     /// <summary>The receive loop ended because the link dropped or the remote side closed it.</summary>
     public event EventHandler<Exception?>? Disconnected;
@@ -100,14 +103,17 @@ public sealed class ProtocolSession : IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    /// <summary>Sends a DATA_MDR payload and completes when the device ACKs it.</summary>
-    public async Task SendAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken, TimeSpan? timeout = null)
+    /// <summary>
+    /// Sends a DATA_MDR payload and completes when the device ACKs it, with the ACK's
+    /// <see cref="ReceivedPayload.Ordinal">receive ordinal</see>.
+    /// </summary>
+    public async Task<long> SendAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
         var wait = ValidateTimeout(timeout);
         await _requestLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var ack = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var ack = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
             lock (_gate)
             {
                 ThrowIfUnusable();
@@ -119,6 +125,7 @@ public sealed class ProtocolSession : IAsyncDisposable
             }
 
             await ExchangeAsync(payload, ack.Task, wait, "an ACK", cancellationToken).ConfigureAwait(false);
+            return await ack.Task.ConfigureAwait(false);
         }
         finally
         {
@@ -133,10 +140,10 @@ public sealed class ProtocolSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// Sends a DATA_MDR payload and returns the payload of the first DATA_MDR frame whose byte 0 equals
+    /// Sends a DATA_MDR payload and returns the first DATA_MDR frame whose byte 0 equals
     /// <paramref name="responseOpcode"/> and, when given, whose byte 1 equals <paramref name="responseSubtype"/>.
     /// </summary>
-    public async Task<ReadOnlyMemory<byte>> RequestAsync(
+    public async Task<ReceivedPayload> RequestAsync(
         ReadOnlyMemory<byte> payload,
         byte responseOpcode,
         byte? responseSubtype,
@@ -368,7 +375,7 @@ public sealed class ProtocolSession : IAsyncDisposable
 
                 foreach (var frame in _decoder.Feed(buffer.AsSpan(0, read)))
                 {
-                    await HandleFrameAsync(frame, cancellationToken).ConfigureAwait(false);
+                    await HandleFrameAsync(frame, ++_receivedFrames, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
@@ -389,7 +396,7 @@ public sealed class ProtocolSession : IAsyncDisposable
         }
     }
 
-    private async Task HandleFrameAsync(Frame frame, CancellationToken cancellationToken)
+    private async Task HandleFrameAsync(Frame frame, long ordinal, CancellationToken cancellationToken)
     {
         if (frame.Type == FrameType.Ack)
         {
@@ -400,7 +407,7 @@ public sealed class ProtocolSession : IAsyncDisposable
                 matched = frame.Sequence == _expectedAckSequence;
                 if (matched)
                 {
-                    _pendingAck?.TrySetResult();
+                    _pendingAck?.TrySetResult(ordinal);
                 }
             }
 
@@ -418,7 +425,7 @@ public sealed class ProtocolSession : IAsyncDisposable
 
         if (frame.Type == FrameType.DataMdr)
         {
-            DispatchData(frame);
+            DispatchData(frame, ordinal);
         }
         else
         {
@@ -426,8 +433,9 @@ public sealed class ProtocolSession : IAsyncDisposable
         }
     }
 
-    private void DispatchData(Frame frame)
+    private void DispatchData(Frame frame, long ordinal)
     {
+        var received = new ReceivedPayload(frame.Payload, ordinal);
         bool duplicate;
         lock (_gate)
         {
@@ -435,7 +443,7 @@ public sealed class ProtocolSession : IAsyncDisposable
             _lastDeviceSequence = frame.Sequence;
 
             if (!duplicate && _pendingResponse is { } pending && Matches(frame, pending)
-                && pending.Completion.TrySetResult(frame.Payload))
+                && pending.Completion.TrySetResult(received))
             {
                 return;
             }
@@ -447,16 +455,16 @@ public sealed class ProtocolSession : IAsyncDisposable
             return;
         }
 
-        _dispatch.Writer.TryWrite(new DispatchItem(frame, null));
+        _dispatch.Writer.TryWrite(new DispatchItem(received, null));
     }
 
     private async Task PumpDispatchAsync()
     {
         await foreach (var item in _dispatch.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            if (item.Notification is { } frame)
+            if (item.Notification is { } notification)
             {
-                Raise(NotificationReceived, frame, nameof(NotificationReceived));
+                Raise(NotificationReceived, notification, nameof(NotificationReceived));
             }
             else
             {
@@ -526,7 +534,7 @@ public sealed class ProtocolSession : IAsyncDisposable
     }
 
     // Exactly one of the two is set: a notification to raise, or the cause of the disconnect.
-    private readonly record struct DispatchItem(Frame? Notification, Exception? DisconnectCause);
+    private readonly record struct DispatchItem(ReceivedPayload? Notification, Exception? DisconnectCause);
 
     private sealed class PendingResponse(byte opcode, byte? subtype)
     {
@@ -534,7 +542,7 @@ public sealed class ProtocolSession : IAsyncDisposable
 
         public byte? Subtype { get; } = subtype;
 
-        public TaskCompletionSource<ReadOnlyMemory<byte>> Completion { get; } =
+        public TaskCompletionSource<ReceivedPayload> Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

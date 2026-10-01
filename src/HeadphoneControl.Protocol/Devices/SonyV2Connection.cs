@@ -1,5 +1,4 @@
 using HeadphoneControl.Protocol.Commands;
-using HeadphoneControl.Protocol.Framing;
 using HeadphoneControl.Protocol.Session;
 using HeadphoneControl.Protocol.Transport;
 using Microsoft.Extensions.Logging;
@@ -48,8 +47,11 @@ public sealed class SonyV2Connection : IAsyncDisposable
         _session.Disconnected += OnDisconnected;
     }
 
-    /// <summary>An unsolicited DATA_MDR payload, e.g. a battery change or the echo the headset sends after every SET.</summary>
-    public event EventHandler<ReadOnlyMemory<byte>>? NotificationReceived;
+    /// <summary>
+    /// An unsolicited DATA_MDR payload, e.g. a battery change or the echo the headset sends after every SET. Its
+    /// ordinal orders it against the replies and ACKs the other members return.
+    /// </summary>
+    public event EventHandler<ReceivedPayload>? NotificationReceived;
 
     /// <summary>The link dropped or the headset closed it. Raised at most once; <see cref="IsLinkLost"/> is set first.</summary>
     public event EventHandler<Exception?>? LinkLost;
@@ -86,7 +88,7 @@ public sealed class SonyV2Connection : IAsyncDisposable
             var reply = await session.RequestAsync(
                 handshake.Payload, handshake.ResponseOpcode!.Value, handshake.ResponseSubtype, cancellationToken)
                 .ConfigureAwait(false);
-            connection._commands = V2CommandSet.FromHandshake(transport.ServiceGeneration, reply.Span);
+            connection._commands = V2CommandSet.FromHandshake(transport.ServiceGeneration, reply.Payload.Span);
             return connection;
         }
         catch
@@ -108,43 +110,45 @@ public sealed class SonyV2Connection : IAsyncDisposable
             .ConfigureAwait(false);
         var equalizer = await TryQueryAsync(_commands.QueryEqualizer(), _commands.ParseEqualizer, cancellationToken)
             .ConfigureAwait(false);
-        var dsee = await TryQueryValueAsync(_commands.QueryDsee(), _commands.ParseDsee, cancellationToken)
+        var dsee = await TryQueryAsync(_commands.QueryDsee(), _commands.ParseDsee, cancellationToken)
             .ConfigureAwait(false);
         var firmware = await TryQueryAsync(
                 _commands.QueryFirmwareVersion(), _commands.ParseFirmwareVersion, cancellationToken)
             .ConfigureAwait(false);
-        var codec = await TryQueryValueAsync(_commands.QueryCodec(), _commands.ParseCodec, cancellationToken)
+        var codec = await TryQueryAsync(_commands.QueryCodec(), _commands.ParseCodec, cancellationToken)
             .ConfigureAwait(false);
         return new DeviceSettings(battery, noise, equalizer, dsee, firmware, codec);
     }
 
     /// <summary>Reads the equalizer; null when the query is unanswered or malformed.</summary>
-    public Task<EqualizerState?> TryReadEqualizerAsync(CancellationToken cancellationToken) =>
+    public Task<Received<EqualizerState>?> TryReadEqualizerAsync(CancellationToken cancellationToken) =>
         TryQueryAsync(_commands.QueryEqualizer(), _commands.ParseEqualizer, cancellationToken);
 
-    /// <summary>Completes when the headset ACKs the change.</summary>
-    public Task SetNoiseControlAsync(NoiseControlState state, CancellationToken cancellationToken)
+    /// <summary>Completes with the receive ordinal of the headset's ACK.</summary>
+    public Task<long> SetNoiseControlAsync(NoiseControlState state, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(state);
         return SendAsync(_commands.SetNoiseControl(state), cancellationToken);
     }
 
     /// <summary>
-    /// Completes when the headset ACKs the preset. The headset owns each preset's band curve, so the caller should
-    /// re-read it with <see cref="TryReadEqualizerAsync"/>.
+    /// Completes with the receive ordinal of the headset's ACK. The headset owns each preset's band curve, so the
+    /// caller should re-read it with <see cref="TryReadEqualizerAsync"/>.
     /// </summary>
-    public Task SetEqualizerPresetAsync(EqualizerPreset preset, CancellationToken cancellationToken) =>
+    public Task<long> SetEqualizerPresetAsync(EqualizerPreset preset, CancellationToken cancellationToken) =>
         SendAsync(_commands.SetEqualizerPreset(preset), cancellationToken);
 
-    /// <summary>Completes when the headset ACKs the manual curve (each level -10..10, 5 bands).</summary>
-    public Task SetCustomEqualizerAsync(int clearBass, IReadOnlyList<int> bands, CancellationToken cancellationToken)
+    /// <summary>
+    /// Sets the manual curve (each level -10..10, 5 bands). Completes with the receive ordinal of the headset's ACK.
+    /// </summary>
+    public Task<long> SetCustomEqualizerAsync(int clearBass, IReadOnlyList<int> bands, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(bands);
         return SendAsync(_commands.SetEqualizerCustom(clearBass, bands), cancellationToken);
     }
 
-    /// <summary>Completes when the headset ACKs the change.</summary>
-    public Task SetDseeAsync(bool enabled, CancellationToken cancellationToken) =>
+    /// <summary>Completes with the receive ordinal of the headset's ACK.</summary>
+    public Task<long> SetDseeAsync(bool enabled, CancellationToken cancellationToken) =>
         SendAsync(_commands.SetDsee(enabled), cancellationToken);
 
     /// <summary>
@@ -162,25 +166,12 @@ public sealed class SonyV2Connection : IAsyncDisposable
         await _session.DisposeAsync().ConfigureAwait(false);
     }
 
-    private Task SendAsync(MdrRequest request, CancellationToken cancellationToken) =>
+    private Task<long> SendAsync(MdrRequest request, CancellationToken cancellationToken) =>
         _session.SendAsync(request.Payload, cancellationToken);
-
-    private async Task<T?> TryQueryAsync<T>(MdrRequest request, SpanParser<T> parse, CancellationToken cancellationToken)
-        where T : class =>
-        await TryQueryCoreAsync(request, parse, cancellationToken).ConfigureAwait(false) is (true, var value)
-            ? value
-            : null;
-
-    private async Task<T?> TryQueryValueAsync<T>(
-        MdrRequest request, SpanParser<T> parse, CancellationToken cancellationToken)
-        where T : struct =>
-        await TryQueryCoreAsync(request, parse, cancellationToken).ConfigureAwait(false) is (true, var value)
-            ? value
-            : null;
 
     // A single unanswered or malformed query must not fail the whole connection: the feature stays unknown
     // (null) and the UI disables it. Link loss still propagates.
-    private async Task<(bool Found, T Value)> TryQueryCoreAsync<T>(
+    private async Task<Received<T>?> TryQueryAsync<T>(
         MdrRequest request, SpanParser<T> parse, CancellationToken cancellationToken)
     {
         try
@@ -188,17 +179,17 @@ public sealed class SonyV2Connection : IAsyncDisposable
             var reply = await _session.RequestAsync(
                 request.Payload, request.ResponseOpcode!.Value, request.ResponseSubtype, cancellationToken)
                 .ConfigureAwait(false);
-            return (true, parse(reply.Span));
+            return new Received<T>(parse(reply.Payload.Span), reply.Ordinal);
         }
         catch (Exception ex) when (ex is TimeoutException or FormatException)
         {
             _logger.LogWarning(ex, "Query {Payload} failed; the setting stays unknown", Convert.ToHexString(request.Payload.Span));
-            return (false, default!);
+            return null;
         }
     }
 
-    private void OnNotificationReceived(object? sender, Frame frame) =>
-        NotificationReceived?.Invoke(this, frame.Payload);
+    private void OnNotificationReceived(object? sender, ReceivedPayload notification) =>
+        NotificationReceived?.Invoke(this, notification);
 
     private void OnDisconnected(object? sender, Exception? cause)
     {

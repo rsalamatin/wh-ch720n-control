@@ -4,6 +4,7 @@ using HeadphoneControl.Protocol.Transport;
 using HeadphoneControl.Testing;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
+using TUnit.Assertions.Enums;
 
 namespace HeadphoneControl.Core.Tests;
 
@@ -544,6 +545,116 @@ public class HeadsetControllerTests
         await Assert.That((await notified).Battery).IsEqualTo(new BatteryState(42, false));
     }
 
+    // The echo is received before the SET's ACK but queued behind the SET operation, so it is applied after it.
+    [Test]
+    public async Task WhenOlderNoiseControlEchoIsAppliedAfterANewerSetThenTheSetValueIsKept()
+    {
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset);
+        await controller.ConnectAsync(CancellationToken.None);
+        var writeHung = headset.Transport.HangNextWrite();
+        var set = controller.SetNoiseControlAsync(
+            new NoiseControlState(NoiseControlMode.NoiseCancelling, false, 5), CancellationToken.None);
+        await writeHung.WaitAsync(Patience);
+
+        headset.Notify(0x69, 0x17, 0x01, 0x01, 0x01, 0x00, 3);
+        headset.Transport.ReleaseHungWrite();
+        await set.WaitAsync(Patience);
+        await ProcessQueuedNotificationsAsync(controller, headset);
+
+        await Assert.That(controller.State.NoiseControl!.Mode).IsEqualTo(NoiseControlMode.NoiseCancelling);
+    }
+
+    // A late Bright curve, e.g. the reply to an earlier timed-out query, is received before the BassBoost re-read.
+    [Test]
+    public async Task WhenOlderEqualizerCurveIsAppliedAfterAPresetReReadThenTheReReadCurveIsKept()
+    {
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset);
+        await controller.ConnectAsync(CancellationToken.None);
+        headset.Replies[0x56] = [0x57, 0x00, 0x16, 0x06, 10, 16, 14, 10, 10, 10];
+        var writeHung = headset.Transport.HangNextWrite();
+        var set = controller.SetEqualizerPresetAsync(EqualizerPreset.BassBoost, CancellationToken.None);
+        await writeHung.WaitAsync(Patience);
+
+        headset.Notify(0x57, 0x00, 0x10, 0x06, 10, 11, 12, 13, 14, 15);
+        headset.Transport.ReleaseHungWrite();
+        await set.WaitAsync(Patience);
+        await ProcessQueuedNotificationsAsync(controller, headset);
+
+        await Assert.That(controller.State.Equalizer!.Preset).IsEqualTo(EqualizerPreset.BassBoost);
+    }
+
+    [Test]
+    public async Task WhenStateChangedHandlerThrowsThenLaterOperationsStillComplete()
+    {
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset);
+        await controller.ConnectAsync(CancellationToken.None);
+        var thrown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        controller.StateChanged += (_, state) =>
+        {
+            if (state.Battery?.Level == 42 && thrown.TrySetResult())
+            {
+                throw new InvalidOperationException("Handler failure.");
+            }
+        };
+        headset.Notify(0x25, 0x00, 42, 0);
+        await thrown.Task.WaitAsync(Patience);
+
+        var act = () => controller.SetDseeAsync(false, CancellationToken.None).WaitAsync(Patience);
+
+        await Assert.That(act).ThrowsNothing();
+    }
+
+    [Test]
+    public async Task WhenTokenIsAlreadyCancelledThenConnectThrowsOperationCanceled()
+    {
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset);
+
+        var act = () => controller.ConnectAsync(new CancellationToken(canceled: true)).WaitAsync(Patience);
+
+        await Assert.That(act).Throws<OperationCanceledException>();
+    }
+
+    [Test]
+    public async Task WhenTokenIsAlreadyCancelledThenStateNeverChanges()
+    {
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset);
+        var changes = 0;
+        controller.StateChanged += (_, _) => Interlocked.Increment(ref changes);
+
+        await IgnoreCancelledAsync(controller.ConnectAsync(new CancellationToken(canceled: true)));
+
+        await Assert.That(changes).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task WhenConnectSucceedsThenStatusGoesFromConnectingToConnected()
+    {
+        var headset = new FakeHeadset();
+        await using var controller = CreateController(headset);
+        var statuses = new List<ConnectionStatus>();
+        controller.StateChanged += (_, state) => statuses.Add(state.Connection);
+
+        await controller.ConnectAsync(CancellationToken.None);
+
+        await Assert.That(statuses).IsEquivalentTo(
+            [ConnectionStatus.Connecting, ConnectionStatus.Connected], CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task WhenCreatedThenStateIsDisconnected()
+    {
+        var headset = new FakeHeadset();
+
+        await using var controller = CreateController(headset);
+
+        await Assert.That(controller.State).IsEqualTo(DeviceState.Disconnected);
+    }
+
     [Test]
     public async Task WhenSettingIsRequestedDuringConnectThenItIsSentOnceConnected()
     {
@@ -697,6 +808,15 @@ public class HeadsetControllerTests
             }
         };
         return reached.Task.WaitAsync(Patience);
+    }
+
+    // Notifications are applied in receive order, so once a later battery notification is applied every earlier one
+    // has been too.
+    private static async Task ProcessQueuedNotificationsAsync(HeadsetController controller, FakeHeadset headset)
+    {
+        var applied = NextStateAsync(controller, state => state.Battery?.Level == 17);
+        headset.Notify(0x25, 0x00, 17, 0);
+        await applied;
     }
 
     // The unanswered request waits on the fake clock: advance it once that request is on the wire.
