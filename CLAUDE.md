@@ -20,7 +20,7 @@ The solution is `HeadphoneControl.sln`:
   - `HeadsetSelection` (display order, connect to the preferred headset).
 - **`src/HeadphoneControl.Platform.Windows`:** the Windows `IHeadsetConnector` (`RfcommConnector`), with WinRT discovery, `RfcommTransport` and the HRESULT error mapping. Everything but `RfcommConnector` is internal.
 - **Tests:** TUnit projects `tests/HeadphoneControl.Protocol.Tests`, `tests/HeadphoneControl.Core.Tests`, `tests/HeadphoneControl.Platform.Windows.Tests` and `tests/HeadphoneControl.Tests`. The shared fakes (`FakeTransport`, `FakeHeadset`, `HookedLoggerFactory`) live in the class library `tests/HeadphoneControl.Testing`. The `[Explicit]` hardware tests (`RfcommHardwareTests` in Platform.Windows.Tests, `HeadphoneDeviceHardwareTests` in HeadphoneControl.Tests) need the paired headset.
-- **Refactor in progress:** `docs/architecture-refactor-plan.md`.
+- **Architecture refactor:** done on 2026-10-01; the design and its history are in `docs/architecture-refactor-plan.md`.
 
 Build output goes to `artifacts/` (`UseArtifactsOutput`). When several agents build at the same time, each passes `-p:Lane=<name>` so it builds into `artifacts/lanes/<name>` and doesn't lock another agent's files. Lane folders are disposable.
 
