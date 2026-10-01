@@ -1,6 +1,6 @@
 # Development status
 
-Last updated: 2026-09-30. The solution builds with 0 warnings. 484 non-Explicit tests pass: 340 in `HeadphoneControl.Protocol.Tests`, 11 in `HeadphoneControl.Core.Tests`, 22 in `HeadphoneControl.Platform.Windows.Tests` and 111 in `HeadphoneControl.Tests`.
+Last updated: 2026-10-01. The solution builds with 0 warnings. 510 non-Explicit tests pass: 301 in `HeadphoneControl.Protocol.Tests`, 78 in `HeadphoneControl.Core.Tests`, 22 in `HeadphoneControl.Platform.Windows.Tests` and 109 in `HeadphoneControl.Tests`.
 
 ## How the work was organised
 
@@ -23,8 +23,8 @@ Git is not installed, so the agents could not use worktrees. Instead, each agent
 | Session | `Protocol/Session/ProtocolSession.cs` | 1-bit seq/ACK; every frame type is ACKed; duplicates are dropped; replies are matched by opcode and subtype; no stale-reply buffer; notifications and the `Disconnected` event are raised on a dispatch task; one timeout covers the write and the wait. |
 | V2 commands | `Protocol/Commands` | Builders and parsers for battery, NC/ambient, EQ, DSEE, firmware and codec, plus applying notifications. Auto power-off was removed on 2026-09-28 (see below). **Safety:** `V2CommandSet.FromHandshake(transportGeneration, initReply)` is the only way to get the command set, and it requires both the RFCOMM service and the init reply to say V2 (reply of 8 bytes with byte 2 equal to 0x03). |
 | RFCOMM transport | `src/HeadphoneControl.Platform.Windows` (seam and selection rule in `src/HeadphoneControl.Core`) | `RfcommConnector` (the Windows `IHeadsetConnector`), `HeadsetDiscovery` (paired devices from the SDP cache), `RfcommTransport` (reports `DetectedGeneration`), error mapping. **Verified on the real WH-CH720N:** discovery, connect, and the init handshake. |
-| UI | `src/HeadphoneControl/{Views,ViewModels,Simulation,Diagnostics,Resources}` | MVVM with debounced sliders, protection against lost updates, and handling for the full exception set. Compact flyout layout (redesigned 2026-09-29): the window follows its content height (`SizeToContent`), sections collapse to a one-line summary, ambient options appear only in Ambient mode, only failures and warnings show (in an info bar), and Refresh, device info and Diagnostics live in the `⋯` menu. The diagnostics journal opens in its own window and is written to `headphone-control.log`. `--simulated` and `--simulated-connect-failure` switch to the simulated device. |
-| Real device | `Protocol/Devices/HeadphoneDevice.cs` | **Phase 2, done.** Connects, sends the handshake, gates V2 on both signals, then refreshes state. A query that goes unanswered or comes back malformed leaves that setting null instead of failing the connection. Setters complete on the device's ACK. The EQ preset setter then re-reads the EQ, because the headset sends no EQ echo. Notifications are applied and link loss is handled. `App.CreateDevice` uses this device unless `--simulated` is passed; `--verbose` enables frame-level logging. Tests are in `tests/.../Devices` (a `FakeHeadset` replays the real init reply). |
+| UI | `src/HeadphoneControl/{Views,ViewModels,Simulation,Diagnostics,Resources}` | MVVM bound to `IHeadphoneDevice`: binding, strings and status text only. Debounce, coalescing and the pending-edit rule live in `HeadsetController`. Compact flyout layout (redesigned 2026-09-29): the window follows its content height (`SizeToContent`), sections collapse to a one-line summary, ambient options appear only in Ambient mode, only failures and warnings show (in an info bar), and Refresh, device info and Diagnostics live in the `⋯` menu. The diagnostics journal opens in its own window and is written to `headphone-control.log`. `--simulated` and `--simulated-connect-failure` use `Simulation/SimulatedHeadsetConnector`, a byte-level headset behind the same `HeadsetController`. |
+| Real device | `Core/HeadsetController.cs`, `Protocol/Devices/SonyV2Connection.cs` | `SonyV2Connection` is one confirmed V2 link; `HeadsetController` owns the connection lifecycle as a `Channel` actor (State pattern: `Disconnected`/`Connecting`/`Connected`/`Failed` records) and serializes every operation. Every received frame carries a receive ordinal, and a value is applied only if its frame is newer than the one that last set that setting, so a notification queued behind an operation cannot undo a newer SET. Setters are debounced on request (`EditPacing`) and coalesced per `SettingGroup`. Connects, sends the handshake, gates V2 on both signals, then refreshes state. A query that goes unanswered or comes back malformed leaves that setting null instead of failing the connection. Setters complete on the device's ACK. The EQ preset setter then re-reads the EQ, because the headset sends no EQ echo. Notifications are applied and link loss is handled. `App.CreateDevice` uses this device unless `--simulated` is passed; `--verbose` enables frame-level logging. Tests are in `tests/HeadphoneControl.Core.Tests` and `tests/HeadphoneControl.Protocol.Tests/Devices` (a `FakeHeadset` replays the real init reply). |
 
 ## Real-hardware facts (WH-CH720N)
 
@@ -34,7 +34,7 @@ Git is not installed, so the agents could not use worktrees. Instead, each agent
   - RX `ACK(seq1)` followed by DATA_MDR seq0 with payload `01 00 03 00 10 02 00 00`.
 - **Retransmission:** the headset retransmits any frame that is not ACKed.
 - **Single connection:** only one RFCOMM connection to the control service can be open at a time. A second one fails with 0x80072740.
-- **Full read through `HeadphoneDevice`** on 2026-09-28, firmware 1.1.4. Every GET below is ACKed before its reply arrives:
+- **Full read through the device layer** on 2026-09-28, firmware 1.1.4. Every GET below is ACKed before its reply arrives:
 
   | Query | Reply payload | Decoded |
   |---|---|---|
@@ -66,11 +66,11 @@ Git is not installed, so the agents could not use worktrees. Instead, each agent
 - Hardware sessions: connect, noise control, EQ and DSEE all work on the real headset. The DSEE notify opcode and the echo after each SET are confirmed.
 
 **Remaining:**
-0. Architecture refactor, approved on 2026-09-29: Steps 1 and 2a were done on 2026-09-30. Next is Step 2b. See `docs/architecture-refactor-plan.md`.
+0. ~~Architecture refactor~~: all steps done on 2026-10-01 (see `docs/architecture-refactor-plan.md`). Run the hardware smoke test (`docs/hardware-smoke-test.md`) once on the real headset to confirm.
 1. On hardware, check the codec byte map for codecs other than AAC. Focus on Voice and the headset button were confirmed on 2026-09-28.
 2. ~~Update `README.md`~~. Rewritten on 2026-09-28 (RFCOMM, switches, tests, layout, limitations).
 
 **Review follow-ups (done 2026-09-28):**
-- **EQ unknown:** after a failed re-read, `Equalizer` is set to null only if nothing newer arrived after the ACK, so a late `0x57`/`0x59` is kept. The UI then says "Preset applied, but the equalizer could not be read back. Press Refresh."
+- **EQ unknown:** after a failed re-read, `Equalizer` is set to null stamped with the ACK's receive ordinal, so a late `0x57`/`0x59` received after the ACK is kept and an older one is not. The UI then says "Preset applied, but the equalizer could not be read back. Press Refresh."
 - **Sequence handling, a deliberate departure from the reference:** `ProtocolSession` no longer resyncs its outgoing sequence from ACKs. The reference does (`SonyProtocolSession.cpp:199`). Here the sequence simply alternates once each frame is on the wire, and only the ACK `1 - seq` of the frame in flight counts. A late ACK is ignored and logged at Debug. This is safe because the WH-CH720N ACKs seq n with 1−n, so resyncing from the matching ACK adds nothing, and resyncing from a late ACK caused sequence reuse (a silently dropped command). It was verified on hardware.
-- **Link-drop test:** `WhenLinkDropsAfterTheLastConnectQueryThenStateSettlesNotConnected` is a smoke test. The race it guards is closed structurally: the check and the publish are atomic under `_stateLock`. It still describes BLE GATT and needs to describe RFCOMM, `--simulated`, `--verbose`, and how to run the tests.
+- **Link-drop test:** `WhenLinkDropsAfterTheLastConnectQueryThenStateSettlesNotConnected` is a smoke test. The race it guards is closed structurally: the actor handles the link-lost message only after the connect operation finishes. It still describes BLE GATT and needs to describe RFCOMM, `--simulated`, `--verbose`, and how to run the tests.
