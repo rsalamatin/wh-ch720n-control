@@ -38,12 +38,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public MainViewModel(
         IHeadphoneDevice device,
         DiagnosticsViewModel diagnostics,
+        FirmwareUpdateViewModel firmware,
         ILogger<MainViewModel> logger,
         // Runs an action on the UI thread; device events can arrive on any thread.
         Action<Action> dispatch)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(diagnostics);
+        ArgumentNullException.ThrowIfNull(firmware);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(dispatch);
 
@@ -51,6 +53,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _logger = logger;
         _dispatch = dispatch;
         Diagnostics = diagnostics;
+        Firmware = firmware;
         DeviceName = device.Name;
 
         NoiseModes = [.. new[] { NoiseControlMode.NoiseCancelling, NoiseControlMode.Ambient, NoiseControlMode.Off }
@@ -84,6 +87,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public event EventHandler<int>? LowBatteryReached;
 
     public DiagnosticsViewModel Diagnostics { get; }
+
+    public FirmwareUpdateViewModel Firmware { get; }
 
     public string DeviceName { get; }
 
@@ -236,6 +241,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _device.StateChanged -= OnDeviceStateChanged;
         ConnectCommand.PropertyChanged -= OnConnectCommandChanged;
         Cancel();
+        Firmware.Dispose();
         Diagnostics.Dispose();
     }
 

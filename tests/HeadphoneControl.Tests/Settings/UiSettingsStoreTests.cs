@@ -41,6 +41,35 @@ public sealed class UiSettingsStoreTests : IDisposable
     }
 
     [Test]
+    public async Task WhenFirmwareCheckIsSavedThenItIsLoadedBack()
+    {
+        var firmwareCheck = new FirmwareCheckSettings(
+            Automatic: false,
+            LastChecked: new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero),
+            LatestVersion: "1.1.4",
+            InfoUrl: "https://example.com/wh-ch720n",
+            NotifiedVersion: "1.1.4");
+        var store = CreateStore();
+        store.Save(new UiSettings(FirmwareCheck: firmwareCheck));
+
+        var settings = CreateStore().Load();
+
+        await Assert.That(settings.FirmwareCheck).IsEqualTo(firmwareCheck);
+    }
+
+    [Test]
+    public async Task WhenFileHasOnlyAThemeThenFirmwareCheckIsAbsent()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+        await File.WriteAllTextAsync(SettingsPath, """{ "Theme": "Dark" }""");
+        var store = CreateStore();
+
+        var settings = store.Load();
+
+        await Assert.That(settings).IsEqualTo(new UiSettings(ThemePreference.Dark));
+    }
+
+    [Test]
     public async Task WhenFileIsCorruptThenDefaultsAreLoaded()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);

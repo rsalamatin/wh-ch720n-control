@@ -9,6 +9,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using HeadphoneControl.Core;
 using HeadphoneControl.Diagnostics;
+using HeadphoneControl.FirmwareUpdates;
 using HeadphoneControl.Platform.Windows;
 using HeadphoneControl.Protocol.Devices;
 using HeadphoneControl.Resources;
@@ -25,11 +26,15 @@ public partial class App : Application
     private const string SimulatedSwitch = "--simulated";
     private const string SimulatedConnectFailureSwitch = "--simulated-connect-failure";
     private const string SimulatedBatterySwitch = "--simulated-battery=";
+    private const string FirmwareManifestSwitch = "--firmware-manifest=";
     private const string VerboseSwitch = "--verbose";
     private const string HeadsetModel = "WH-CH720N";
     private const string ToastAppId = "HeadphoneControl";
     private const string IconFileName = "headphone-control.ico";
     private static readonly Uri AppIconUri = new($"avares://HeadphoneControl/Assets/{IconFileName}");
+    private static readonly Uri DefaultFirmwareManifestUrl =
+        new("https://raw.githubusercontent.com/rsalamatin/wh-ch720n-control/main/firmware.json");
+    private static readonly TimeSpan FirmwareCheckTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan SimulatedLatency = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan DeviceShutdownTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan CrashFlushTimeout = TimeSpan.FromSeconds(2);
@@ -43,6 +48,7 @@ public partial class App : Application
     private UiSettings? _settings;
     private TrayIcon? _trayIcon;
     private Bitmap? _appIcon;
+    private HttpClient? _http;
     private bool _shutdownStarted;
     private bool _shutdownCompleted;
 
@@ -70,23 +76,24 @@ public partial class App : Application
 
             _device = CreateDevice(args, _loggerFactory);
 
+            _settingsStore = new UiSettingsStore(UiSettingsStore.DefaultPath, _loggerFactory.CreateLogger<UiSettingsStore>());
+            _settings = _settingsStore.Load();
+            ApplyTheme(_settings.Theme);
+
             Action<Action> dispatch = action => Dispatcher.UIThread.Post(action);
             _mainViewModel = new MainViewModel(
                 _device,
                 new DiagnosticsViewModel(journal, dispatch),
+                CreateFirmwareUpdates(args, _device, _settings, dispatch, _loggerFactory),
                 _loggerFactory.CreateLogger<MainViewModel>(),
                 dispatch);
-
-            _settingsStore = new UiSettingsStore(UiSettingsStore.DefaultPath, _loggerFactory.CreateLogger<UiSettingsStore>());
-            _settings = _settingsStore.Load();
-            ApplyTheme(_settings.Theme);
 
             var window = new MainWindow { DataContext = _mainViewModel };
             window.ShowTheme(_settings.Theme);
             window.ThemeSelected += OnThemeSelected;
             window.Closing += OnMainWindowClosing;
             CreateTrayIcon(window, _mainViewModel);
-            NotifyOnLowBattery(_mainViewModel, _loggerFactory);
+            ShowNotifications(_mainViewModel, _loggerFactory);
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
             desktop.MainWindow = window;
             desktop.Exit += OnExit;
@@ -129,7 +136,32 @@ public partial class App : Application
         };
     }
 
-    private static void NotifyOnLowBattery(MainViewModel viewModel, ILoggerFactory loggerFactory)
+    // The check always asks about the real model, so --simulated shows it too.
+    private FirmwareUpdateViewModel CreateFirmwareUpdates(
+        string[] args, IHeadphoneDevice device, UiSettings settings, Action<Action> dispatch, ILoggerFactory loggerFactory)
+    {
+        var manifestUrl = args.FirstOrDefault(a => a.StartsWith(FirmwareManifestSwitch, StringComparison.OrdinalIgnoreCase))
+            is { } argument
+            ? new Uri(argument[FirmwareManifestSwitch.Length..])
+            : DefaultFirmwareManifestUrl;
+        _http = new HttpClient();
+        var checker = new FirmwareUpdateChecker(_http, manifestUrl, FirmwareCheckTimeout);
+        return new FirmwareUpdateViewModel(
+            device,
+            cancellationToken => checker.GetLatestAsync(HeadsetModel, cancellationToken),
+            settings.FirmwareCheck ?? new FirmwareCheckSettings(),
+            SaveFirmwareCheck,
+            loggerFactory.CreateLogger<FirmwareUpdateViewModel>(),
+            dispatch);
+    }
+
+    private void SaveFirmwareCheck(FirmwareCheckSettings firmwareCheck)
+    {
+        _settings = (_settings ?? UiSettings.Default) with { FirmwareCheck = firmwareCheck };
+        _settingsStore?.Save(_settings);
+    }
+
+    private static void ShowNotifications(MainViewModel viewModel, ILoggerFactory loggerFactory)
     {
         var iconPath = Path.Combine(AppContext.BaseDirectory, IconFileName);
         var notifier = new ToastNotifier(
@@ -139,6 +171,9 @@ public partial class App : Application
             loggerFactory.CreateLogger<ToastNotifier>());
         viewModel.LowBatteryReached += (_, level) => notifier.Show(
             Strings.Get("LowBattery_Title"), Strings.Format("LowBattery_BodyFormat", viewModel.DeviceName, level));
+        viewModel.Firmware.UpdateFound += (_, update) => notifier.Show(
+            Strings.Get("FirmwareUpdate_Title"),
+            Strings.Format("FirmwareUpdate_BodyFormat", viewModel.DeviceName, update.InstalledVersion, update.LatestVersion));
     }
 
     private void OnThemeSelected(object? sender, ThemePreference theme)
@@ -234,6 +269,7 @@ public partial class App : Application
         _logger?.LogInformation("Exiting with code {ExitCode}", e.ApplicationExitCode);
         _trayIcon?.Dispose();
         _appIcon?.Dispose();
+        _http?.Dispose();
         _loggerFactory?.Dispose();
         _logProvider?.Dispose();
     }

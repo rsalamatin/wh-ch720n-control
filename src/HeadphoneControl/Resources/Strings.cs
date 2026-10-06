@@ -47,6 +47,10 @@ public static class Strings
     public static string Theme_System => Get(nameof(Theme_System));
     public static string Theme_Light => Get(nameof(Theme_Light));
     public static string Theme_Dark => Get(nameof(Theme_Dark));
+    public static string Menu_FirmwareUpdates => Get(nameof(Menu_FirmwareUpdates));
+    public static string Menu_FirmwareCheckNow => Get(nameof(Menu_FirmwareCheckNow));
+    public static string Menu_FirmwareOpenPage => Get(nameof(Menu_FirmwareOpenPage));
+    public static string Menu_FirmwareAutomatic => Get(nameof(Menu_FirmwareAutomatic));
     public static string Tray_Open => Get(nameof(Tray_Open));
     public static string Tray_Exit => Get(nameof(Tray_Exit));
     public static string Dismiss => Get(nameof(Dismiss));

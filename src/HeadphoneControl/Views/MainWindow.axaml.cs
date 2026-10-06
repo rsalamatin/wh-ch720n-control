@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -142,6 +143,24 @@ public partial class MainWindow : Window
         if (bottom > area.Bottom)
         {
             Position = new PixelPoint(Position.X, Math.Max(area.Y, Position.Y - (bottom - area.Bottom)));
+        }
+    }
+
+    private async void OnFirmwarePageClick(object? sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.Firmware.InfoUrl is not { } url)
+        {
+            return;
+        }
+
+        try
+        {
+            await Launcher.LaunchUriAsync(url);
+        }
+        catch (Exception ex) when (ex is ExternalException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            // An escaping exception in an async void handler would crash the app. The user sees that no browser
+            // opened, and the menu item is still there to try again.
         }
     }
 

@@ -216,6 +216,14 @@
                             <MenuItem x:Name="ThemeDarkItem" Header="{x:Static res:Strings.Theme_Dark}"
                                       ToggleType="Radio" GroupName="Theme" Click="OnThemeClick" />
                         </MenuItem>
+                        <MenuItem Header="{x:Static res:Strings.Menu_FirmwareUpdates}">
+                            <MenuItem Header="{x:Static res:Strings.Menu_FirmwareCheckNow}"
+                                      Command="{Binding Firmware.CheckNowCommand}" IsVisible="{Binding IsConnected}" />
+                            <MenuItem Header="{x:Static res:Strings.Menu_FirmwareOpenPage}" Click="OnFirmwarePageClick"
+                                      IsVisible="{Binding Firmware.HasInfoPage}" />
+                            <MenuItem Header="{x:Static res:Strings.Menu_FirmwareAutomatic}" ToggleType="CheckBox"
+                                      IsChecked="{Binding Firmware.IsAutomatic, Mode=TwoWay}" />
+                        </MenuItem>
                         <MenuItem Header="{x:Static res:Strings.Disconnect}" Command="{Binding DisconnectCommand}"
                                   IsVisible="{Binding IsConnected}" />
                         <Separator IsVisible="{Binding IsConnected}" />
@@ -229,9 +237,10 @@
                         </MenuItem>
                         <MenuItem IsEnabled="False" IsVisible="{Binding IsConnected}">
                             <MenuItem.Header>
-                                <Grid ColumnDefinitions="80,*">
+                                <Grid ColumnDefinitions="80,Auto,*">
                                     <TextBlock Text="{x:Static res:Strings.Label_Firmware}" />
                                     <TextBlock Grid.Column="1" Text="{Binding FirmwareText}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Firmware.StatusText}" Margin="8,0,0,0" />
                                 </Grid>
                             </MenuItem.Header>
                         </MenuItem>

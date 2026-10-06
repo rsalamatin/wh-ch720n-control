@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Headphone Control** is a C# / .NET 10 Avalonia desktop app (CommunityToolkit.Mvvm) that controls a Sony **WH-CH720N** on Windows 11. It talks to the headset over WinRT Bluetooth RFCOMM through `Microsoft.Windows.SDK.NET.Ref`.
 
 The solution is `HeadphoneControl.sln`:
-- **`src/HeadphoneControl`:** the Avalonia app (`net10.0-windows10.0.22621.0`). `--simulated` uses `Simulation/`, a byte-level `IHeadsetConnector` that speaks the real frame protocol, behind the same `HeadsetController` as the headset. `App.CreateDevice` is the composition root and the only place that picks the headset's platform backend (`App.NotifyOnLowBattery` also uses the Windows `ToastNotifier`).
-- **`src/HeadphoneControl.Core`:** the only platform-neutral library (`net10.0`).
+- **`src/HeadphoneControl`:** the Avalonia app (`net10.0-windows10.0.22621.0`). `--simulated` uses `Simulation/`, a byte-level `IHeadsetConnector` that speaks the real frame protocol, behind the same `HeadsetController` as the headset. `App.CreateDevice` is the composition root and the only place that picks the headset's platform backend (`App.ShowNotifications` also uses the Windows `ToastNotifier`).
+- **`src/HeadphoneControl.Core`:** the platform-neutral headset library (`net10.0`).
   - `Protocol/` (namespaces `HeadphoneControl.Protocol.*`), the wire-level code:
     - `Framing/`: framing;
     - `Session/`: session (ACK/sequence, request matching, notifications);
@@ -21,7 +21,8 @@ The solution is `HeadphoneControl.sln`:
     - `HeadsetSelection` (display order, connect to the preferred headset).
   - The former `HeadphoneControl.Protocol` project was merged into Core on 2026-10-01: same TFM and dependencies, and Core depended on Protocol, so every consumer of Core pulled in both. `SonyV2Connection`, `DeviceSettings` and `Received<T>` are internal (visible to Core.Tests).
 - **`src/HeadphoneControl.Platform.Windows`:** the Windows `IHeadsetConnector` (`RfcommConnector`), with WinRT discovery, `RfcommTransport` and the HRESULT error mapping, plus `ToastNotifier` (Windows toasts for the unpackaged app; it registers the AppUserModelID under `HKCU\Software\Classes\AppUserModelId`). Everything but `RfcommConnector` and `ToastNotifier` is internal.
-- **Tests:** TUnit projects `tests/HeadphoneControl.Core.Tests` (protocol tests under `Protocol/`), `tests/HeadphoneControl.Platform.Windows.Tests` and `tests/HeadphoneControl.Tests`. The shared fakes (`FakeTransport`, `FakeHeadset`, `HookedLoggerFactory`) live in the class library `tests/HeadphoneControl.Testing`. The `[Explicit]` hardware tests (`RfcommHardwareTests` in Platform.Windows.Tests, `HeadphoneDeviceHardwareTests` in HeadphoneControl.Tests) need the paired headset.
+- **`src/HeadphoneControl.FirmwareUpdates`:** platform-neutral (`net10.0`), references no other project, and is the only code that uses the network. `FirmwareUpdateChecker` downloads the manifest `firmware.json` (repository root, served from `raw.githubusercontent.com`) and returns the newest `FirmwareRelease` for a model; `FirmwareRelease.StatusFor` compares dotted versions. It never downloads or installs firmware. In the app, `ViewModels/FirmwareUpdateViewModel` decides when to check (at most once a day while connected, retry after an hour on failure) and keeps the last result in `settings.json`. When Sony releases new firmware, update `firmware.json` by hand.
+- **Tests:** TUnit projects `tests/HeadphoneControl.Core.Tests` (protocol tests under `Protocol/`), `tests/HeadphoneControl.Platform.Windows.Tests`, `tests/HeadphoneControl.FirmwareUpdates.Tests` and `tests/HeadphoneControl.Tests`. The shared fakes (`FakeTransport`, `FakeHeadset`, `HookedLoggerFactory`) live in the class library `tests/HeadphoneControl.Testing`. The `[Explicit]` hardware tests (`RfcommHardwareTests` in Platform.Windows.Tests, `HeadphoneDeviceHardwareTests` in HeadphoneControl.Tests) need the paired headset.
 - **Architecture refactor:** done on 2026-10-01; the design and its history are in `docs/architecture-refactor-plan.md`.
 
 Build output goes to `artifacts/` (`UseArtifactsOutput`). When several agents build at the same time, each passes `-p:Lane=<name>` so it builds into `artifacts/lanes/<name>` and doesn't lock another agent's files. Lane folders are disposable.
@@ -45,6 +46,7 @@ dotnet run --project src/HeadphoneControl                 # real headset; add "-
 dotnet run --project src/HeadphoneControl -- --verbose    # also log raw protocol frames (Debug)
 dotnet test --project tests/HeadphoneControl.Core.Tests        # Microsoft.Testing.Platform runner (global.json)
 dotnet test --project tests/HeadphoneControl.Platform.Windows.Tests
+dotnet test --project tests/HeadphoneControl.FirmwareUpdates.Tests
 dotnet test --project tests/HeadphoneControl.Tests
 dotnet test --project tests/HeadphoneControl.Core.Tests --treenode-filter "/*/*/FrameCodecTests/*"   # subset
 dotnet test --project tests/HeadphoneControl.Tests -- --treenode-filter "/*/*/HeadphoneDeviceHardwareTests/*"   # [Explicit] read-only hardware test
@@ -52,7 +54,7 @@ dotnet test --project tests/HeadphoneControl.Tests -- --treenode-filter "/*/*/He
 
 Diagnostics appear in the UI and are appended to `headphone-control.log` beside the executable, at Information level by default. The file is capped at 10 MB; when it is full it is cleared and logging starts over in the same file. Debug level (`--verbose`) logs every frame, including the now-playing track titles the headset streams, so it is opt-in.
 
-UI preferences (currently only the theme) are saved by `Settings/UiSettingsStore` in `%APPDATA%\HeadphoneControl\settings.json`. Minimizing hides the window to the tray icon that `App` creates. While connected, the tray icon is redrawn with a battery gauge (`Views/BatteryTrayIcon`). `MainViewModel.LowBatteryReached` fires once per discharge at 20 % or less, and `App` shows it as a Windows toast through `ToastNotifier`. `--simulated-battery=<0..100>` sets the simulated headset's level.
+UI preferences (the theme, and the firmware check's switch and last result) are saved by `Settings/UiSettingsStore` in `%APPDATA%\HeadphoneControl\settings.json`. Minimizing hides the window to the tray icon that `App` creates. While connected, the tray icon is redrawn with a battery gauge (`Views/BatteryTrayIcon`). `MainViewModel.LowBatteryReached` fires once per discharge at 20 % or less, and `App` shows it as a Windows toast through `ToastNotifier`. `--simulated-battery=<0..100>` sets the simulated headset's level. `--firmware-manifest=<url>` points the firmware check at another manifest.
 
 ## Protocol knowledge
 

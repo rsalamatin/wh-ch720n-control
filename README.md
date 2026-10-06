@@ -21,6 +21,7 @@ It is built with C# / .NET 10, Avalonia UI and CommunityToolkit.Mvvm.
 - **Live updates:** changes made with the headset's own buttons show up in the app immediately.
 - **Tray:** minimizing hides the window to a tray icon. Click it, or choose Open, to bring the window back; Exit quits. The tooltip shows the connection and battery level. While connected, the icon also carries a battery gauge, which turns red at 20 % or less.
 - **Low-battery notification:** a Windows toast appears when the battery reaches 20 % or less and the headset isn't charging. It is shown once per discharge: again only after charging, a level of 25 % or more, or a reconnect. The level only updates when the headset reports it or on Refresh, because there is no periodic refresh yet.
+- **Firmware update check:** the app compares the firmware the headset reports with the newest version listed in `firmware.json` in this repository. The `⋯` menu shows the result next to the firmware version (`up to date` or `1.2.0 available`), and a toast announces each new version once. The check runs at most once a day while a headset is connected; **Firmware updates** in the `⋯` menu has Check now, a link to Sony's download page, and a switch for the automatic check. This is the only network request the app makes: a plain download of that file, with no data about you or the headset. The app never installs firmware; use the Sony | Sound Connect app for that. The file is maintained by hand, so a new Sony release shows up only after `firmware.json` is updated.
 - **Theme:** `⋯` → Theme switches between the Windows setting, Light and Dark. The choice is saved in `%APPDATA%\HeadphoneControl\settings.json`.
 - **Diagnostics:** a separate window (`⋯` → Diagnostics…) with Copy all, Clear and Open log folder. The log is also written to `headphone-control.log` beside the executable. The file is capped at 10 MB; when it is full it is cleared and logging starts over in the same file.
 
@@ -44,6 +45,7 @@ dotnet run --project src/HeadphoneControl -- --verbose    # also log every proto
 | `--simulated` | Uses an in-memory WH-CH720N that speaks the real frame protocol, so framing, the session, the handshake and the V2 check all run as they do against the headset. |
 | `--simulated-connect-failure` | The simulated headset fails its first connect. |
 | `--simulated-battery=<0..100>` | The simulated headset reports this battery level (default 80). Use 20 or less to see the low-battery notification. |
+| `--firmware-manifest=<url>` | Reads the firmware manifest from this http(s) URL instead of the repository's `firmware.json`. |
 | `--verbose` | Debug logging, including raw protocol frames. Off by default, because the headset streams now-playing track titles over the same channel. |
 
 ## How it works
@@ -63,12 +65,15 @@ src/
   HeadphoneControl/                    Avalonia app (net10.0-windows): views, view models, simulator, composition root
   HeadphoneControl.Core/               platform-neutral (net10.0): HeadsetController, IHeadsetConnector seam, headset selection;
                                        Protocol/: framing, session, V2 commands, SonyV2Connection
-  HeadphoneControl.Platform.Windows/   WinRT RFCOMM discovery, transport and connector
+  HeadphoneControl.Platform.Windows/   WinRT RFCOMM discovery, transport and connector; toast notifications
+  HeadphoneControl.FirmwareUpdates/    platform-neutral (net10.0): looks up the newest firmware in firmware.json and compares versions
 tests/
   HeadphoneControl.Testing/                 shared fakes: FakeTransport, FakeHeadset (class library, not a test project)
   HeadphoneControl.Core.Tests/              HeadsetController, headset selection, service ids; Protocol/: protocol, session and connection tests
   HeadphoneControl.Platform.Windows.Tests/  RFCOMM transport and error mapping; [Explicit] RFCOMM hardware tests
+  HeadphoneControl.FirmwareUpdates.Tests/   manifest download and version comparison, against a stub HTTP handler
   HeadphoneControl.Tests/                   view model, simulator, diagnostics; [Explicit] end-to-end hardware test
+firmware.json                  newest known firmware per headset model, read by the app's update check
 docs/
   development-status.md        status, verified hardware facts, next steps
   backlog.md                   future improvements
@@ -80,6 +85,7 @@ docs/
 ```powershell
 dotnet test --project tests/HeadphoneControl.Core.Tests
 dotnet test --project tests/HeadphoneControl.Platform.Windows.Tests
+dotnet test --project tests/HeadphoneControl.FirmwareUpdates.Tests
 dotnet test --project tests/HeadphoneControl.Tests
 ```
 

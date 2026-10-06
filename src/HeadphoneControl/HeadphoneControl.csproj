@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\HeadphoneControl.Core\HeadphoneControl.Core.csproj" />
+    <ProjectReference Include="..\HeadphoneControl.FirmwareUpdates\HeadphoneControl.FirmwareUpdates.csproj" />
     <ProjectReference Include="..\HeadphoneControl.Platform.Windows\HeadphoneControl.Platform.Windows.csproj" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The only code that talks to the network. It knows nothing about the headset protocol, the UI or Windows. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="HeadphoneControl.FirmwareUpdates.Tests" />
+  </ItemGroup>
+
+</Project>

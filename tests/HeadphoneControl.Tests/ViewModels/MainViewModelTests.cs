@@ -1,4 +1,6 @@
 using HeadphoneControl.Diagnostics;
+using HeadphoneControl.FirmwareUpdates;
+using HeadphoneControl.Settings;
 using HeadphoneControl.Protocol.Devices;
 using HeadphoneControl.Protocol.Transport;
 using HeadphoneControl.Resources;
@@ -56,6 +58,13 @@ public class MainViewModelTests
         return new MainViewModel(
             device,
             new DiagnosticsViewModel(new DiagnosticsJournal(), inline),
+            new FirmwareUpdateViewModel(
+                device,
+                _ => Task.FromResult<FirmwareRelease?>(null),
+                new FirmwareCheckSettings(Automatic: false),
+                _ => { },
+                NullLogger<FirmwareUpdateViewModel>.Instance,
+                inline),
             logger ?? NullLogger<MainViewModel>.Instance,
             inline);
     }
