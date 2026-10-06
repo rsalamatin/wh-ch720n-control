@@ -10,6 +10,8 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+    <!-- Also a file beside the executable: Windows reads the toast notification icon from a path. -->
+    <Content Include="Assets\headphone-control.ico" Link="headphone-control.ico" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <InternalsVisibleTo Include="HeadphoneControl.Tests" />
   </ItemGroup>
 

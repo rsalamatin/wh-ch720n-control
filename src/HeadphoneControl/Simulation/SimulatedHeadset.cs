@@ -6,7 +6,7 @@ namespace HeadphoneControl.Simulation;
 // The device side of a WH-CH720N on firmware 1.1.4, at payload level: answers queries and applies SETs the way the
 // captured sessions in docs/development-status.md show. It outlives each link, so a reconnect sees the last settings.
 // The opcodes mirror the internal V2Opcodes of the protocol layer; none exists only here.
-internal sealed class SimulatedHeadset
+internal sealed class SimulatedHeadset(byte batteryLevel)
 {
     private const byte InitRequest = 0x00;
     private const byte FirmwareGet = 0x04;
@@ -56,7 +56,7 @@ internal sealed class SimulatedHeadset
 
     private readonly Lock _gate = new();
 
-    private readonly byte _batteryLevel = 80;
+    private readonly byte _batteryLevel = batteryLevel;
     private readonly byte[] _firmware = Encoding.ASCII.GetBytes("1.1.4");
     private byte _noiseEffect = 1;
     private byte _noiseSettingType;

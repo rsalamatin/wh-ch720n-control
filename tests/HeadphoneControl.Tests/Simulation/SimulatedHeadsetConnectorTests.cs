@@ -63,6 +63,16 @@ public class SimulatedHeadsetConnectorTests
     }
 
     [Test]
+    public async Task WhenABatteryLevelIsGivenThenTheHeadsetReportsIt()
+    {
+        await using var device = CreateDevice(new SimulatedHeadsetConnector(TimeSpan.Zero, _time, batteryLevel: 15));
+
+        await device.ConnectAsync(CancellationToken.None);
+
+        await Assert.That(device.State.Battery).IsEqualTo(new BatteryState(15, IsCharging: false));
+    }
+
+    [Test]
     public async Task WhenConnectedThenDefaultSettingsAreRead()
     {
         await using var device = CreateDevice(CreateConnector());

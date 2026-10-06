@@ -410,6 +410,132 @@ public class MainViewModelTests
         await Assert.That(viewModel.BatteryText).IsEqualTo("54 %");
     }
 
+    private static void ReportBattery(IHeadphoneDevice device, int level, bool isCharging = false)
+    {
+        var state = ConnectedState() with { Battery = new BatteryState(level, isCharging) };
+        device.State.Returns(state);
+        device.StateChanged += Raise.Event<EventHandler<DeviceState>>(device, state);
+    }
+
+    private static void ReportDisconnected(IHeadphoneDevice device)
+    {
+        device.State.Returns(DeviceState.Disconnected);
+        device.StateChanged += Raise.Event<EventHandler<DeviceState>>(device, DeviceState.Disconnected);
+    }
+
+    [Test]
+    public async Task WhenBatteryFallsToTheLowLevelThenLowBatteryIsReportedWithTheLevel()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+        var reported = new List<int>();
+        viewModel.LowBatteryReached += (_, level) => reported.Add(level);
+
+        ReportBattery(device, 20);
+
+        await Assert.That(reported).IsEquivalentTo([20]);
+    }
+
+    [Test]
+    public async Task WhenBatteryIsAboveTheLowLevelThenLowBatteryIsNotReported()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+        var reported = new List<int>();
+        viewModel.LowBatteryReached += (_, level) => reported.Add(level);
+
+        ReportBattery(device, 21);
+
+        await Assert.That(reported).IsEmpty();
+    }
+
+    [Test]
+    public async Task WhenBatteryKeepsFallingThenLowBatteryIsReportedOnce()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+        var reported = new List<int>();
+        viewModel.LowBatteryReached += (_, level) => reported.Add(level);
+        ReportBattery(device, 20);
+
+        ReportBattery(device, 19);
+
+        await Assert.That(reported).IsEquivalentTo([20]);
+    }
+
+    [Test]
+    public async Task WhenBatteryWaversJustAboveTheLowLevelThenLowBatteryIsReportedOnce()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+        var reported = new List<int>();
+        viewModel.LowBatteryReached += (_, level) => reported.Add(level);
+        ReportBattery(device, 20);
+        ReportBattery(device, 22);
+
+        ReportBattery(device, 20);
+
+        await Assert.That(reported).IsEquivalentTo([20]);
+    }
+
+    [Test]
+    public async Task WhenLowBatteryIsChargingThenLowBatteryIsNotReported()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+        var reported = new List<int>();
+        viewModel.LowBatteryReached += (_, level) => reported.Add(level);
+
+        ReportBattery(device, 10, isCharging: true);
+
+        await Assert.That(reported).IsEmpty();
+    }
+
+    [Test]
+    public async Task WhenChargingStopsWhileStillLowThenLowBatteryIsReportedAgain()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+        var reported = new List<int>();
+        viewModel.LowBatteryReached += (_, level) => reported.Add(level);
+        ReportBattery(device, 15);
+        ReportBattery(device, 16, isCharging: true);
+
+        ReportBattery(device, 17);
+
+        await Assert.That(reported).IsEquivalentTo([15, 17]);
+    }
+
+    [Test]
+    public async Task WhenBatteryRecoversAndFallsAgainThenLowBatteryIsReportedAgain()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+        var reported = new List<int>();
+        viewModel.LowBatteryReached += (_, level) => reported.Add(level);
+        ReportBattery(device, 20);
+        ReportBattery(device, 25);
+
+        ReportBattery(device, 19);
+
+        await Assert.That(reported).IsEquivalentTo([20, 19]);
+    }
+
+    [Test]
+    public async Task WhenHeadsetReconnectsWithLowBatteryThenLowBatteryIsReportedAgain()
+    {
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device);
+        var reported = new List<int>();
+        viewModel.LowBatteryReached += (_, level) => reported.Add(level);
+        ReportBattery(device, 18);
+        ReportDisconnected(device);
+
+        ReportBattery(device, 18);
+
+        await Assert.That(reported).IsEquivalentTo([18, 18]);
+    }
+
     [Test]
     public async Task WhenLeavingAmbientModeThenFocusOnVoiceIsRemembered()
     {

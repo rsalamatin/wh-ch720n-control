@@ -10,10 +10,11 @@ namespace HeadphoneControl.Simulation;
 public sealed class SimulatedHeadsetConnector : IHeadsetConnector
 {
     public const string HeadsetName = "WH-CH720N (simulated)";
+    public const int DefaultBatteryLevel = 80;
 
     private static readonly DiscoveredHeadset Headset = new(HeadsetName, "simulated", ProtocolGeneration.V2);
 
-    private readonly SimulatedHeadset _headset = new();
+    private readonly SimulatedHeadset _headset;
     private readonly TimeSpan _latency;
     private readonly TimeProvider _timeProvider;
     private readonly Lock _gate = new();
@@ -21,9 +22,13 @@ public sealed class SimulatedHeadsetConnector : IHeadsetConnector
     private int _failNextConnect;
 
     /// <param name="latency">Delay of the connect and of each reply; zero answers at once.</param>
-    public SimulatedHeadsetConnector(TimeSpan latency, TimeProvider? timeProvider = null)
+    /// <param name="batteryLevel">The battery level the headset reports, 0..100.</param>
+    public SimulatedHeadsetConnector(TimeSpan latency, TimeProvider? timeProvider = null, int batteryLevel = DefaultBatteryLevel)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(latency, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfNegative(batteryLevel);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(batteryLevel, 100);
+        _headset = new SimulatedHeadset((byte)batteryLevel);
         _latency = latency;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }

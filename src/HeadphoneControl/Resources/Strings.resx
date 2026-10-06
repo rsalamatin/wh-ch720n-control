@@ -100,6 +100,8 @@
   <data name="Tray_Exit" xml:space="preserve"><value>Exit</value></data>
   <data name="TrayToolTipFormat" xml:space="preserve"><value>{0} · {1}</value></data>
   <data name="TrayToolTipWithBatteryFormat" xml:space="preserve"><value>{0} · {1} · {2}</value></data>
+  <data name="LowBattery_Title" xml:space="preserve"><value>Headset battery low</value></data>
+  <data name="LowBattery_BodyFormat" xml:space="preserve"><value>{0} is at {1} %. Charge it soon.</value></data>
   <data name="Dismiss" xml:space="preserve"><value>Dismiss</value></data>
   <data name="ResetEqualizer" xml:space="preserve"><value>Reset equalizer to flat</value></data>
   <data name="CopyAll" xml:space="preserve"><value>Copy all</value></data>

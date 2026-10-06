@@ -15,6 +15,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private const int MaxAmbientLevel = 20;
     private const int LowBatteryLevel = 20;
 
+    // Above the low level, so a reading that wavers around it warns once.
+    private const int LowBatteryRearmLevel = 25;
+
     private readonly IHeadphoneDevice _device;
     private readonly ILogger _logger;
     private readonly Action<Action> _dispatch;
@@ -30,6 +33,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private int _lastAmbientLevel = 10;
     private bool _lastFocusOnVoice;
     private bool _isCodecKnown;
+    private bool _lowBatteryWarned;
 
     public MainViewModel(
         IHeadphoneDevice device,
@@ -74,6 +78,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ApplyState(device.State);
         _device.StateChanged += OnDeviceStateChanged;
     }
+
+    // Raised with the level, once per discharge: again only after charging, a level of LowBatteryRearmLevel or more,
+    // or a reconnect.
+    public event EventHandler<int>? LowBatteryReached;
 
     public DiagnosticsViewModel Diagnostics { get; }
 
@@ -432,9 +440,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         BatteryText = state.Battery is { } battery
             ? Strings.Format("BatteryLevelFormat", battery.Level)
             : Strings.UnknownValue;
-        HasBattery = state.Battery is not null;
+        // Ordered so no handler sees HasBattery with a level that isn't the headset's: the tray gauge is drawn from both.
+        HasBattery &= state.Battery is not null;
         BatteryLevel = state.Battery?.Level ?? 0;
+        HasBattery = state.Battery is not null;
         IsCharging = state.Battery?.IsCharging ?? false;
+        WarnIfBatteryBecameLow(state.Battery);
         FirmwareText = state.FirmwareVersion ?? Strings.UnknownValue;
         _isCodecKnown = state.Codec is not null;
         CodecText = state.Codec is { } codec ? DisplayNames.Of(codec) : Strings.UnknownValue;
@@ -471,6 +482,21 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             IsDseeEnabled = state.DseeEnabled ?? false;
         }
     });
+
+    private void WarnIfBatteryBecameLow(BatteryState? battery)
+    {
+        if (battery is not { IsCharging: false, Level: < LowBatteryRearmLevel })
+        {
+            _lowBatteryWarned = false;
+            return;
+        }
+
+        if (battery.Level <= LowBatteryLevel && !_lowBatteryWarned)
+        {
+            _lowBatteryWarned = true;
+            LowBatteryReached?.Invoke(this, battery.Level);
+        }
+    }
 
     private void ApplyLocally(Action apply)
     {

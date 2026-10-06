@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using HeadphoneControl.Core;
@@ -22,8 +24,12 @@ public partial class App : Application
 {
     private const string SimulatedSwitch = "--simulated";
     private const string SimulatedConnectFailureSwitch = "--simulated-connect-failure";
+    private const string SimulatedBatterySwitch = "--simulated-battery=";
     private const string VerboseSwitch = "--verbose";
     private const string HeadsetModel = "WH-CH720N";
+    private const string ToastAppId = "HeadphoneControl";
+    private const string IconFileName = "headphone-control.ico";
+    private static readonly Uri AppIconUri = new($"avares://HeadphoneControl/Assets/{IconFileName}");
     private static readonly TimeSpan SimulatedLatency = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan DeviceShutdownTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan CrashFlushTimeout = TimeSpan.FromSeconds(2);
@@ -36,6 +42,7 @@ public partial class App : Application
     private UiSettingsStore? _settingsStore;
     private UiSettings? _settings;
     private TrayIcon? _trayIcon;
+    private Bitmap? _appIcon;
     private bool _shutdownStarted;
     private bool _shutdownCompleted;
 
@@ -79,6 +86,7 @@ public partial class App : Application
             window.ThemeSelected += OnThemeSelected;
             window.Closing += OnMainWindowClosing;
             CreateTrayIcon(window, _mainViewModel);
+            NotifyOnLowBattery(_mainViewModel, _loggerFactory);
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
             desktop.MainWindow = window;
             desktop.Exit += OnExit;
@@ -103,6 +111,34 @@ public partial class App : Application
         _trayIcon.Clicked += (_, _) => window.RestoreFromTray();
         TrayIcon.SetIcons(this, [_trayIcon]);
         window.MinimizeToTray = true;
+
+        using (var icon = AssetLoader.Open(AppIconUri))
+        {
+            _appIcon = new Bitmap(icon);
+        }
+
+        var plainIcon = window.Icon;
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(MainViewModel.HasBattery) or nameof(MainViewModel.BatteryLevel))
+            {
+                _trayIcon.Icon = viewModel.HasBattery
+                    ? BatteryTrayIcon.Render(_appIcon, viewModel.BatteryLevel, viewModel.IsBatteryLow)
+                    : plainIcon;
+            }
+        };
+    }
+
+    private static void NotifyOnLowBattery(MainViewModel viewModel, ILoggerFactory loggerFactory)
+    {
+        var iconPath = Path.Combine(AppContext.BaseDirectory, IconFileName);
+        var notifier = new ToastNotifier(
+            ToastAppId,
+            Strings.AppTitle,
+            File.Exists(iconPath) ? iconPath : null,
+            loggerFactory.CreateLogger<ToastNotifier>());
+        viewModel.LowBatteryReached += (_, level) => notifier.Show(
+            Strings.Get("LowBattery_Title"), Strings.Format("LowBattery_BodyFormat", viewModel.DeviceName, level));
     }
 
     private void OnThemeSelected(object? sender, ThemePreference theme)
@@ -119,13 +155,21 @@ public partial class App : Application
         _ => ThemeVariant.Default,
     };
 
-    // The only place that picks the headset implementation and the platform backend.
+    // The only place that picks the headset implementation and its platform backend.
     private static IHeadphoneDevice CreateDevice(string[] args, ILoggerFactory loggerFactory)
     {
         var failConnect = args.Contains(SimulatedConnectFailureSwitch, StringComparer.OrdinalIgnoreCase);
-        if (failConnect || args.Contains(SimulatedSwitch, StringComparer.OrdinalIgnoreCase))
+        var batteryArgument = args.FirstOrDefault(
+            a => a.StartsWith(SimulatedBatterySwitch, StringComparison.OrdinalIgnoreCase))?[SimulatedBatterySwitch.Length..];
+        if (failConnect || batteryArgument is not null || args.Contains(SimulatedSwitch, StringComparer.OrdinalIgnoreCase))
         {
-            var simulated = new SimulatedHeadsetConnector(SimulatedLatency) { FailNextConnect = failConnect };
+            var batteryLevel = SimulatedHeadsetConnector.DefaultBatteryLevel;
+            if (batteryArgument is not null && (!int.TryParse(batteryArgument, out batteryLevel) || batteryLevel is < 0 or > 100))
+            {
+                throw new ArgumentException($"{SimulatedBatterySwitch} needs a level from 0 to 100, not '{batteryArgument}'.");
+            }
+
+            var simulated = new SimulatedHeadsetConnector(SimulatedLatency, batteryLevel: batteryLevel) { FailNextConnect = failConnect };
             return new HeadsetController(SimulatedHeadsetConnector.HeadsetName, simulated.ConnectPreferredAsync, loggerFactory);
         }
 
@@ -189,6 +233,7 @@ public partial class App : Application
     {
         _logger?.LogInformation("Exiting with code {ExitCode}", e.ApplicationExitCode);
         _trayIcon?.Dispose();
+        _appIcon?.Dispose();
         _loggerFactory?.Dispose();
         _logProvider?.Dispose();
     }
