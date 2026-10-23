@@ -25,6 +25,12 @@ The solution is `HeadphoneControl.sln`:
 - **Tests:** TUnit projects `tests/HeadphoneControl.Core.Tests` (protocol tests under `Protocol/`), `tests/HeadphoneControl.Platform.Windows.Tests`, `tests/HeadphoneControl.FirmwareUpdates.Tests` and `tests/HeadphoneControl.Tests`. The shared fakes (`FakeTransport`, `FakeHeadset`, `HookedLoggerFactory`) live in the class library `tests/HeadphoneControl.Testing`. The `[Explicit]` hardware tests (`RfcommHardwareTests` in Platform.Windows.Tests, `HeadphoneDeviceHardwareTests` in HeadphoneControl.Tests) need the paired headset.
 - **Architecture refactor:** done on 2026-10-01; the design and its history are in `docs/architecture-refactor-plan.md`.
 
+The app version is `<Version>` in `src/HeadphoneControl/HeadphoneControl.csproj` (currently `1.00`). `AppVersion.Current` reads it, without the `+<commit>` suffix the SDK adds, for the Settings dialog's About section and the startup log line. **Update the version after every iteration:** each finished feature or fix that gets committed raises it by 0.01 (`1.00` → `1.01` → `1.02` …), in the same commit, unless the user names another number. The release exe is a self-contained single file:
+
+```powershell
+dotnet publish src/HeadphoneControl -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o artifacts/publish/win-x64
+```
+
 Build output goes to `artifacts/` (`UseArtifactsOutput`). When several agents build at the same time, each passes `-p:Lane=<name>` so it builds into `artifacts/lanes/<name>` and doesn't lock another agent's files. Lane folders are disposable.
 
 Docs:

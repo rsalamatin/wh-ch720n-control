@@ -73,6 +73,17 @@
             </StackPanel>
         </Border>
 
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle"
+                           Text="{Binding Source={x:Static res:Strings.Settings_About}, Converter={x:Static v:Converters.ToUpper}}" />
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="{x:Static res:Strings.AppTitle}" />
+                    <SelectableTextBlock Grid.Column="1" x:Name="VersionText" Classes="muted" Text="{Binding VersionText}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
         <Button x:Name="CloseButton" HorizontalAlignment="Right" MinWidth="96" Margin="0,4,0,0"
                 HorizontalContentAlignment="Center" IsDefault="True" IsCancel="True"
                 Content="{x:Static res:Strings.Close}" Click="OnCloseClick" />

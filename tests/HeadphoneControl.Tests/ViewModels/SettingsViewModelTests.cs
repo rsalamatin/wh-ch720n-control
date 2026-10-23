@@ -1,6 +1,7 @@
 using HeadphoneControl.Core;
 using HeadphoneControl.FirmwareUpdates;
 using HeadphoneControl.Protocol.Devices;
+using HeadphoneControl.Resources;
 using HeadphoneControl.Settings;
 using HeadphoneControl.ViewModels;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -59,6 +60,14 @@ public class SettingsViewModelTests
         viewModel.SelectedTheme = viewModel.Themes.First(t => t.Value == ThemePreference.Light);
 
         await Assert.That(_selected).IsEquivalentTo([ThemePreference.Light]);
+    }
+
+    [Test]
+    public async Task WhenCreatedThenTheVersionShowsWithoutTheCommit()
+    {
+        var viewModel = CreateViewModel(ThemePreference.System);
+
+        await Assert.That(viewModel.VersionText).IsEqualTo(Strings.Format("Settings_VersionFormat", "1.00"));
     }
 
     [Test]

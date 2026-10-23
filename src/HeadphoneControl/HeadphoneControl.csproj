@@ -6,6 +6,8 @@
     <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\headphone-control.ico</ApplicationIcon>
+    <!-- The app's version: shown in Settings and in the exe's file properties. -->
+    <Version>1.00</Version>
   </PropertyGroup>
 
   <ItemGroup>

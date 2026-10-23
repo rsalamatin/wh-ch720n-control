@@ -1,3 +1,4 @@
+using HeadphoneControl.Resources;
 using HeadphoneControl.Settings;
 
 namespace HeadphoneControl.ViewModels;
@@ -31,6 +32,8 @@ internal sealed class SettingsViewModel : ViewModelBase
     public FirmwareUpdateViewModel Firmware { get; }
 
     public AutoConnectViewModel AutoConnect { get; }
+
+    public string VersionText { get; } = Strings.Format("Settings_VersionFormat", AppVersion.Current);
 
     // A combo box can clear its selection; the app always has a theme, so null is ignored.
     public Choice<ThemePreference>? SelectedTheme

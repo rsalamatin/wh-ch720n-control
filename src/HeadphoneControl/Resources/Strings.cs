@@ -56,6 +56,7 @@ public static class Strings
     public static string Settings_FirmwareCheckNow => Get(nameof(Settings_FirmwareCheckNow));
     public static string Settings_FirmwareOpenPage => Get(nameof(Settings_FirmwareOpenPage));
     public static string Settings_FirmwareNotConnected => Get(nameof(Settings_FirmwareNotConnected));
+    public static string Settings_About => Get(nameof(Settings_About));
     public static string Close => Get(nameof(Close));
     public static string Tray_Open => Get(nameof(Tray_Open));
     public static string Tray_Exit => Get(nameof(Tray_Exit));

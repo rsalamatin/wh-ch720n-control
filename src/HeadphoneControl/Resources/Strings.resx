@@ -105,6 +105,8 @@
   <data name="Settings_FirmwareCheckNow" xml:space="preserve"><value>Check now</value></data>
   <data name="Settings_FirmwareOpenPage" xml:space="preserve"><value>Open Sony’s download page</value></data>
   <data name="Settings_FirmwareNotConnected" xml:space="preserve"><value>Connect the headset to check its firmware.</value></data>
+  <data name="Settings_About" xml:space="preserve"><value>About</value></data>
+  <data name="Settings_VersionFormat" xml:space="preserve"><value>Version {0}</value></data>
   <data name="Close" xml:space="preserve"><value>Close</value></data>
   <data name="Theme_System" xml:space="preserve"><value>Use Windows setting</value></data>
   <data name="Theme_Light" xml:space="preserve"><value>Light</value></data>

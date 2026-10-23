@@ -74,7 +74,7 @@ public partial class App : Application
                 .AddProvider(_logProvider));
             _logger = _loggerFactory.CreateLogger<App>();
             HookUnhandledExceptions(_logger, _logProvider);
-            _logger.LogInformation("Starting with arguments: {Arguments}", string.Join(' ', args));
+            _logger.LogInformation("Starting version {Version} with arguments: {Arguments}", AppVersion.Current, string.Join(' ', args));
 
             (_device, _presence) = CreateDevice(args, _loggerFactory);
 
