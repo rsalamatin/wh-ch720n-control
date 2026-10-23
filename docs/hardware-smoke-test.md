@@ -52,8 +52,20 @@ While connected, also check the window behaviour:
 - Minimize: the window disappears into the tray, and the tray tooltip shows `Connected` and the battery level.
 - Click the tray icon: the window comes back in its previous state (maximized stays maximized).
 - Open `⋯` → Diagnostics…, minimize, restore, then choose Diagnostics… again: the window shows.
-- `⋯` → Theme → Dark switches the colours at once and is still selected after a restart.
+- `⋯` → Settings… → Theme → Dark switches the colours at once and is still selected after a restart.
 - Tray → Exit closes the app and releases the headset.
+
+Automatic connect (`⋯` → Settings… → Connect automatically, on by default):
+
+- With the headset on and connected to the PC for audio, start the app: it connects by itself about 2 s later
+  (`WH-CH720N connected to this PC over Bluetooth`, then `connecting automatically` in the log).
+- Switch the headset off, wait for `Disconnected`, switch it on: the app reconnects once Windows has the audio back.
+- Choose Disconnect: the app stays disconnected while the headset stays on.
+- Turn the switch off and repeat the power cycle: the app stays disconnected.
+- Play music while starting the app: the audio must not stutter (watching paired devices should not start a
+  Bluetooth inquiry scan).
+- With the Sony app on a phone holding the control channel, power-cycle the headset: the app fails once, then logs
+  `not connecting so soon after a failed connect` instead of retrying every few seconds.
 
 ## 4. Common failures
 

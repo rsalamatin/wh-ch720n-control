@@ -86,6 +86,11 @@ public sealed partial class FirmwareUpdateViewModel : ViewModelBase, IDisposable
 
     public bool HasInfoPage => InfoUrl is not null;
 
+    // Without a connected headset there is no installed version to compare with.
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CheckNowCommand))]
+    public partial bool CanCheckNow { get; private set; }
+
     // Governs only the automatic check; Check now works either way.
     public bool IsAutomatic
     {
@@ -117,6 +122,7 @@ public sealed partial class FirmwareUpdateViewModel : ViewModelBase, IDisposable
     private void ApplyState(DeviceState state)
     {
         _installedVersion = state.Connection == ConnectionStatus.Connected ? state.FirmwareVersion : null;
+        CanCheckNow = _installedVersion is not null;
         UpdateStatus();
         CheckIfDue();
     }
@@ -143,7 +149,7 @@ public sealed partial class FirmwareUpdateViewModel : ViewModelBase, IDisposable
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanCheckNow))]
     private Task CheckNowAsync(CancellationToken cancellationToken) => CheckAsync(cancellationToken);
 
     private async Task CheckAsync(CancellationToken cancellationToken)

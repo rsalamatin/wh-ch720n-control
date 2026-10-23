@@ -17,8 +17,11 @@ internal sealed record FirmwareCheckSettings(
     string? InfoUrl = null,
     string? NotifiedVersion = null);
 
-// FirmwareCheck is null in files written before the firmware check existed.
-internal sealed record UiSettings(ThemePreference Theme = ThemePreference.System, FirmwareCheckSettings? FirmwareCheck = null)
+// FirmwareCheck is null in files written before the firmware check existed; AutoConnect takes its default there too.
+internal sealed record UiSettings(
+    ThemePreference Theme = ThemePreference.System,
+    FirmwareCheckSettings? FirmwareCheck = null,
+    bool AutoConnect = true)
 {
     public static UiSettings Default { get; } = new();
 }

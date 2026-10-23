@@ -7,7 +7,10 @@ These ideas come from the original design plan (`plan.md`, deleted on 2026-09-28
   - Menu: Noise cancelling / Ambient / Off, Reconnect.
   - Closing the window hides it to the tray. Only Exit disconnects.
 - **Settings persistence.** `%APPDATA%\HeadphoneControl\settings.json` (`UiSettingsStore`) already holds the theme. Add: last device, window bounds, "start minimized", and the last ambient level.
-- **Auto-connect** on startup to the last device, or to the first paired WH-CH720N.
+- **Auto-connect gaps.** Automatic connect (`AutoConnectViewModel`, `BluetoothPresenceMonitor`) exists. Still missing:
+  - A report that arrives while the app is busy, or still thinks the old link is up after a quick power cycle, is dropped and not retried.
+  - A `DeviceWatcher` that Windows aborts is logged but not restarted.
+  - It connects to the first paired Sony headset in display order, not necessarily the one that joined.
 - **Single instance.** A second launch brings the running window to the front.
 - **Periodic refresh.**
   - Battery every 30 s. Other settings rotate about every 5 s, so changes made outside the app are picked up without a notification.

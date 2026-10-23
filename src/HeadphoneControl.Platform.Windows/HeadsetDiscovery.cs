@@ -40,7 +40,7 @@ internal sealed class HeadsetDiscovery
         foreach (var info in paired)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var headset = await ProbeAsync(info, cancellationToken).ConfigureAwait(false);
+            var headset = await ProbeAsync(info.Id, info.Name, cancellationToken).ConfigureAwait(false);
             if (headset is not null)
             {
                 headsets.Add(headset);
@@ -54,14 +54,15 @@ internal sealed class HeadsetDiscovery
         return ordered;
     }
 
-    private async Task<DiscoveredHeadset?> ProbeAsync(DeviceInformation info, CancellationToken cancellationToken)
+    /// <returns>The headset, or null when the device has no Sony control service or could not be probed.</returns>
+    public async Task<DiscoveredHeadset?> ProbeAsync(string deviceId, string name, CancellationToken cancellationToken)
     {
         try
         {
-            using var device = await BluetoothDevice.FromIdAsync(info.Id).AsTask(cancellationToken).ConfigureAwait(false);
+            using var device = await BluetoothDevice.FromIdAsync(deviceId).AsTask(cancellationToken).ConfigureAwait(false);
             if (device is null)
             {
-                _logger.LogDebug("Skipping {Name}: not a classic Bluetooth device", info.Name);
+                _logger.LogDebug("Skipping {Name}: not a classic Bluetooth device", name);
                 return null;
             }
 
@@ -100,7 +101,7 @@ internal sealed class HeadsetDiscovery
         catch (Exception ex) when (TransportErrors.IsPlatformError(ex))
         {
             // One misbehaving paired device must not hide the others; the failure is logged, not swallowed.
-            _logger.LogWarning(ex, "Skipping {Name}: probing its services failed", info.Name);
+            _logger.LogWarning(ex, "Skipping {Name}: probing its services failed", name);
             return null;
         }
     }

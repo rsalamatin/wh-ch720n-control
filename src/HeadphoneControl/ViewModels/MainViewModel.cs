@@ -39,6 +39,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         IHeadphoneDevice device,
         DiagnosticsViewModel diagnostics,
         FirmwareUpdateViewModel firmware,
+        AutoConnectViewModel autoConnect,
         ILogger<MainViewModel> logger,
         // Runs an action on the UI thread; device events can arrive on any thread.
         Action<Action> dispatch)
@@ -46,6 +47,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(diagnostics);
         ArgumentNullException.ThrowIfNull(firmware);
+        ArgumentNullException.ThrowIfNull(autoConnect);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(dispatch);
 
@@ -54,6 +56,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _dispatch = dispatch;
         Diagnostics = diagnostics;
         Firmware = firmware;
+        AutoConnect = autoConnect;
         DeviceName = device.Name;
 
         NoiseModes = [.. new[] { NoiseControlMode.NoiseCancelling, NoiseControlMode.Ambient, NoiseControlMode.Off }
@@ -80,6 +83,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         SetStatus(new Status(Strings.Get("Status_Ready"), StatusSeverity.Info));
         ApplyState(device.State);
         _device.StateChanged += OnDeviceStateChanged;
+        AutoConnect.ConnectRequested += OnAutoConnectRequested;
     }
 
     // Raised with the level, once per discharge: again only after charging, a level of LowBatteryRearmLevel or more,
@@ -89,6 +93,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public DiagnosticsViewModel Diagnostics { get; }
 
     public FirmwareUpdateViewModel Firmware { get; }
+
+    public AutoConnectViewModel AutoConnect { get; }
 
     public string DeviceName { get; }
 
@@ -240,7 +246,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         _device.StateChanged -= OnDeviceStateChanged;
         ConnectCommand.PropertyChanged -= OnConnectCommandChanged;
+        AutoConnect.ConnectRequested -= OnAutoConnectRequested;
         Cancel();
+        AutoConnect.Dispose();
         Firmware.Dispose();
         Diagnostics.Dispose();
     }
@@ -427,6 +435,24 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(IsConnecting));
             OnPropertyChanged(nameof(EmptyStateTitle));
             OnPropertyChanged(nameof(EmptyStateBody));
+        }
+    }
+
+    // Only from where the Connect button would work too: a running connect or a live link is left alone.
+    private void OnAutoConnectRequested(object? sender, EventArgs e)
+    {
+        if (ConnectCommand.CanExecute(null))
+        {
+            _logger.LogInformation("Connecting to {Name} automatically", DeviceName);
+            ConnectCommand.Execute(null);
+        }
+    }
+
+    partial void OnConnectionChanged(ConnectionStatus value)
+    {
+        if (value == ConnectionStatus.Failed)
+        {
+            AutoConnect.HoldOff();
         }
     }
 

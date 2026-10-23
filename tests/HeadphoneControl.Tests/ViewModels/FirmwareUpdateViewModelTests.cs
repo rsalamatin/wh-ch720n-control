@@ -52,6 +52,26 @@ public class FirmwareUpdateViewModelTests
     }
 
     [Test]
+    public async Task WhenNoHeadsetIsConnectedThenCheckNowIsUnavailable()
+    {
+        using var viewModel = CreateViewModel();
+
+        var canCheck = viewModel.CheckNowCommand.CanExecute(null);
+
+        await Assert.That(canCheck).IsFalse();
+    }
+
+    [Test]
+    public async Task WhenHeadsetConnectsThenCheckNowIsAvailable()
+    {
+        using var viewModel = CreateViewModel();
+
+        Connect();
+
+        await Assert.That(viewModel.CheckNowCommand.CanExecute(null)).IsTrue();
+    }
+
+    [Test]
     public async Task WhenHeadsetConnectsThenTheLatestFirmwareIsLookedUp()
     {
         using var viewModel = CreateViewModel();

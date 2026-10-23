@@ -12,6 +12,7 @@ using HeadphoneControl.Diagnostics;
 using HeadphoneControl.FirmwareUpdates;
 using HeadphoneControl.Platform.Windows;
 using HeadphoneControl.Protocol.Devices;
+using HeadphoneControl.Protocol.Transport;
 using HeadphoneControl.Resources;
 using HeadphoneControl.Settings;
 using HeadphoneControl.Simulation;
@@ -43,6 +44,7 @@ public partial class App : Application
     private ILoggerFactory? _loggerFactory;
     private ILogger? _logger;
     private IHeadphoneDevice? _device;
+    private IHeadsetPresenceMonitor? _presence;
     private MainViewModel? _mainViewModel;
     private UiSettingsStore? _settingsStore;
     private UiSettings? _settings;
@@ -74,29 +76,40 @@ public partial class App : Application
             HookUnhandledExceptions(_logger, _logProvider);
             _logger.LogInformation("Starting with arguments: {Arguments}", string.Join(' ', args));
 
-            _device = CreateDevice(args, _loggerFactory);
+            (_device, _presence) = CreateDevice(args, _loggerFactory);
 
             _settingsStore = new UiSettingsStore(UiSettingsStore.DefaultPath, _loggerFactory.CreateLogger<UiSettingsStore>());
             _settings = _settingsStore.Load();
             ApplyTheme(_settings.Theme);
 
             Action<Action> dispatch = action => Dispatcher.UIThread.Post(action);
+            var firmware = CreateFirmwareUpdates(args, _device, _settings, dispatch, _loggerFactory);
+            var autoConnect = new AutoConnectViewModel(
+                _presence,
+                _settings.AutoConnect,
+                SaveAutoConnect,
+                _loggerFactory.CreateLogger<AutoConnectViewModel>(),
+                dispatch);
             _mainViewModel = new MainViewModel(
                 _device,
                 new DiagnosticsViewModel(journal, dispatch),
-                CreateFirmwareUpdates(args, _device, _settings, dispatch, _loggerFactory),
+                firmware,
+                autoConnect,
                 _loggerFactory.CreateLogger<MainViewModel>(),
                 dispatch);
 
-            var window = new MainWindow { DataContext = _mainViewModel };
-            window.ShowTheme(_settings.Theme);
-            window.ThemeSelected += OnThemeSelected;
+            var window = new MainWindow
+            {
+                DataContext = _mainViewModel,
+                Settings = new SettingsViewModel(_settings.Theme, SelectTheme, firmware, autoConnect),
+            };
             window.Closing += OnMainWindowClosing;
             CreateTrayIcon(window, _mainViewModel);
             ShowNotifications(_mainViewModel, _loggerFactory);
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
             desktop.MainWindow = window;
             desktop.Exit += OnExit;
+            StartPresenceMonitor(_presence, _logger);
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -176,7 +189,26 @@ public partial class App : Application
             Strings.Format("FirmwareUpdate_BodyFormat", viewModel.DeviceName, update.InstalledVersion, update.LatestVersion));
     }
 
-    private void OnThemeSelected(object? sender, ThemePreference theme)
+    private void SaveAutoConnect(bool autoConnect)
+    {
+        _settings = (_settings ?? UiSettings.Default) with { AutoConnect = autoConnect };
+        _settingsStore?.Save(_settings);
+    }
+
+    // Without the monitor the app still works; only connecting by itself is lost, so this is not fatal.
+    private static void StartPresenceMonitor(IHeadsetPresenceMonitor presence, ILogger logger)
+    {
+        try
+        {
+            presence.Start();
+        }
+        catch (TransportException ex)
+        {
+            logger.LogWarning(ex, "Automatic connect is unavailable: Bluetooth connections can't be watched");
+        }
+    }
+
+    private void SelectTheme(ThemePreference theme)
     {
         ApplyTheme(theme);
         _settings = (_settings ?? UiSettings.Default) with { Theme = theme };
@@ -191,7 +223,8 @@ public partial class App : Application
     };
 
     // The only place that picks the headset implementation and its platform backend.
-    private static IHeadphoneDevice CreateDevice(string[] args, ILoggerFactory loggerFactory)
+    private static (IHeadphoneDevice Device, IHeadsetPresenceMonitor Presence) CreateDevice(
+        string[] args, ILoggerFactory loggerFactory)
     {
         var failConnect = args.Contains(SimulatedConnectFailureSwitch, StringComparer.OrdinalIgnoreCase);
         var batteryArgument = args.FirstOrDefault(
@@ -205,11 +238,15 @@ public partial class App : Application
             }
 
             var simulated = new SimulatedHeadsetConnector(SimulatedLatency, batteryLevel: batteryLevel) { FailNextConnect = failConnect };
-            return new HeadsetController(SimulatedHeadsetConnector.HeadsetName, simulated.ConnectPreferredAsync, loggerFactory);
+            return (
+                new HeadsetController(SimulatedHeadsetConnector.HeadsetName, simulated.ConnectPreferredAsync, loggerFactory),
+                new SimulatedPresenceMonitor());
         }
 
         IHeadsetConnector connector = new RfcommConnector(loggerFactory);
-        return new HeadsetController(HeadsetModel, connector.ConnectPreferredAsync, loggerFactory);
+        return (
+            new HeadsetController(HeadsetModel, connector.ConnectPreferredAsync, loggerFactory),
+            new BluetoothPresenceMonitor(loggerFactory));
     }
 
     private static void HookUnhandledExceptions(ILogger logger, JournalLoggerProvider logProvider)
@@ -247,6 +284,7 @@ public partial class App : Application
         try
         {
             _mainViewModel?.Dispose();
+            _presence?.Dispose();
             if (_device is not null)
             {
                 await _device.DisposeAsync().AsTask().WaitAsync(DeviceShutdownTimeout);

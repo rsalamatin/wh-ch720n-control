@@ -1,0 +1,80 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:HeadphoneControl.ViewModels"
+        xmlns:v="using:HeadphoneControl.Views"
+        xmlns:res="using:HeadphoneControl.Resources"
+        x:Class="HeadphoneControl.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Icon="/Assets/headphone-control.ico"
+        Width="400" SizeToContent="Height" CanResize="False" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Title="{x:Static res:Strings.SettingsTitle}">
+
+    <StackPanel Spacing="10" Margin="12,14,12,14">
+        <Border Classes="card">
+            <StackPanel Spacing="12">
+                <TextBlock Classes="sectionTitle"
+                           Text="{Binding Source={x:Static res:Strings.Settings_Appearance}, Converter={x:Static v:Converters.ToUpper}}" />
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="{x:Static res:Strings.Settings_Theme}" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1" x:Name="ThemeCombo" MinWidth="170"
+                              ItemsSource="{Binding Themes}"
+                              SelectedItem="{Binding SelectedTheme}"
+                              AutomationProperties.Name="{x:Static res:Strings.Settings_Theme}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle"
+                           Text="{Binding Source={x:Static res:Strings.Settings_Connection}, Converter={x:Static v:Converters.ToUpper}}" />
+                <Grid ColumnDefinitions="*,Auto" MinHeight="48">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{x:Static res:Strings.Settings_AutoConnect}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_AutoConnectCaption}" Classes="muted" FontSize="12"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1" x:Name="AutoConnectToggle" Classes="bare" Margin="12,0,0,0"
+                                  IsChecked="{Binding AutoConnect.IsEnabled}"
+                                  AutomationProperties.Name="{x:Static res:Strings.Settings_AutoConnect}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle"
+                           Text="{Binding Source={x:Static res:Strings.Settings_FirmwareUpdates}, Converter={x:Static v:Converters.ToUpper}}" />
+                <Grid ColumnDefinitions="*,Auto" MinHeight="48">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{x:Static res:Strings.Settings_FirmwareAutomatic}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_FirmwareAutomaticCaption}" Classes="muted" FontSize="12"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1" x:Name="FirmwareAutomaticToggle" Classes="bare" Margin="12,0,0,0"
+                                  IsChecked="{Binding Firmware.IsAutomatic}"
+                                  AutomationProperties.Name="{x:Static res:Strings.Settings_FirmwareAutomatic}" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="13" TextWrapping="Wrap"
+                               Text="{Binding Firmware.StatusText}" IsVisible="{Binding Firmware.CanCheckNow}" />
+                    <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="13" TextWrapping="Wrap"
+                               Text="{x:Static res:Strings.Settings_FirmwareNotConnected}"
+                               IsVisible="{Binding !Firmware.CanCheckNow}" />
+                    <Button Grid.Column="1" x:Name="CheckNowButton" Margin="12,0,0,0"
+                            Content="{x:Static res:Strings.Settings_FirmwareCheckNow}"
+                            Command="{Binding Firmware.CheckNowCommand}" />
+                </Grid>
+                <Button x:Name="FirmwarePageButton" Classes="accent" HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Content="{x:Static res:Strings.Settings_FirmwareOpenPage}"
+                        IsVisible="{Binding Firmware.HasInfoPage}" Click="OnFirmwarePageClick" />
+            </StackPanel>
+        </Border>
+
+        <Button x:Name="CloseButton" HorizontalAlignment="Right" MinWidth="96" Margin="0,4,0,0"
+                HorizontalContentAlignment="Center" IsDefault="True" IsCancel="True"
+                Content="{x:Static res:Strings.Close}" Click="OnCloseClick" />
+    </StackPanel>
+</Window>

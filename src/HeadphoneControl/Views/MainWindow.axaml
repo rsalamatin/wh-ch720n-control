@@ -14,20 +14,6 @@
         Title="{x:Static res:Strings.AppTitle}">
 
     <Window.Styles>
-        <Style Selector="Border.card">
-            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Padding" Value="14" />
-        </Style>
-        <Style Selector="TextBlock.sectionTitle">
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="LetterSpacing" Value="0.6" />
-            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
-        </Style>
-
         <Style Selector="ToggleButton.sectionHeader">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -135,12 +121,6 @@
                 </Animation>
             </Style.Animations>
         </Style>
-
-        <Style Selector="ToggleSwitch.bare">
-            <Setter Property="OnContent" Value="{x:Null}" />
-            <Setter Property="OffContent" Value="{x:Null}" />
-            <Setter Property="MinWidth" Value="0" />
-        </Style>
     </Window.Styles>
 
     <Window.Resources>
@@ -207,23 +187,8 @@
                                   IsVisible="{Binding IsConnected}" />
                         <MenuItem Header="{x:Static res:Strings.Menu_CancelOperation}" Command="{Binding CancelCommand}"
                                   IsVisible="{Binding IsOperationRunning}" />
+                        <MenuItem Header="{x:Static res:Strings.Menu_Settings}" Click="OnSettingsClick" />
                         <MenuItem Header="{x:Static res:Strings.Menu_Diagnostics}" Click="OnDiagnosticsClick" />
-                        <MenuItem Header="{x:Static res:Strings.Menu_Theme}">
-                            <MenuItem x:Name="ThemeSystemItem" Header="{x:Static res:Strings.Theme_System}"
-                                      ToggleType="Radio" GroupName="Theme" Click="OnThemeClick" />
-                            <MenuItem x:Name="ThemeLightItem" Header="{x:Static res:Strings.Theme_Light}"
-                                      ToggleType="Radio" GroupName="Theme" Click="OnThemeClick" />
-                            <MenuItem x:Name="ThemeDarkItem" Header="{x:Static res:Strings.Theme_Dark}"
-                                      ToggleType="Radio" GroupName="Theme" Click="OnThemeClick" />
-                        </MenuItem>
-                        <MenuItem Header="{x:Static res:Strings.Menu_FirmwareUpdates}">
-                            <MenuItem Header="{x:Static res:Strings.Menu_FirmwareCheckNow}"
-                                      Command="{Binding Firmware.CheckNowCommand}" IsVisible="{Binding IsConnected}" />
-                            <MenuItem Header="{x:Static res:Strings.Menu_FirmwareOpenPage}" Click="OnFirmwarePageClick"
-                                      IsVisible="{Binding Firmware.HasInfoPage}" />
-                            <MenuItem Header="{x:Static res:Strings.Menu_FirmwareAutomatic}" ToggleType="CheckBox"
-                                      IsChecked="{Binding Firmware.IsAutomatic, Mode=TwoWay}" />
-                        </MenuItem>
                         <MenuItem Header="{x:Static res:Strings.Disconnect}" Command="{Binding DisconnectCommand}"
                                   IsVisible="{Binding IsConnected}" />
                         <Separator IsVisible="{Binding IsConnected}" />

@@ -1,5 +1,6 @@
 using HeadphoneControl.Protocol.Devices;
 using HeadphoneControl.Resources;
+using HeadphoneControl.Settings;
 
 namespace HeadphoneControl.ViewModels;
 
@@ -13,6 +14,8 @@ internal static class DisplayNames
     public static string Of(EqualizerPreset value) => Strings.Get($"EqPreset_{value}");
 
     public static string Of(AudioCodec value) => Strings.Get($"Codec_{value}");
+
+    public static string Of(ThemePreference value) => Strings.Get($"Theme_{value}");
 
     public static IReadOnlyList<Choice<T>> ChoicesOf<T>(Func<T, string> label)
         where T : struct, Enum =>

@@ -12,7 +12,7 @@ public sealed class SimulatedHeadsetConnector : IHeadsetConnector
     public const string HeadsetName = "WH-CH720N (simulated)";
     public const int DefaultBatteryLevel = 80;
 
-    private static readonly DiscoveredHeadset Headset = new(HeadsetName, "simulated", ProtocolGeneration.V2);
+    internal static readonly DiscoveredHeadset Headset = new(HeadsetName, "simulated", ProtocolGeneration.V2);
 
     private readonly SimulatedHeadset _headset;
     private readonly TimeSpan _latency;

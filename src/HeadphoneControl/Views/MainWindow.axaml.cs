@@ -1,47 +1,32 @@
 using System.ComponentModel;
-using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using HeadphoneControl.Settings;
 using HeadphoneControl.ViewModels;
 
 namespace HeadphoneControl.Views;
 
 public partial class MainWindow : Window
 {
-    private readonly Dictionary<MenuItem, ThemePreference> _themeItems;
     private MainViewModel? _viewModel;
     private DiagnosticsWindow? _diagnosticsWindow;
+    private SettingsWindow? _settingsWindow;
     private WindowState _stateBeforeMinimize = WindowState.Normal;
 
     public MainWindow()
     {
         InitializeComponent();
-        _themeItems = new()
-        {
-            [ThemeSystemItem] = ThemePreference.System,
-            [ThemeLightItem] = ThemePreference.Light,
-            [ThemeDarkItem] = ThemePreference.Dark,
-        };
         Opened += (_, _) => FitToWorkingArea();
         SizeChanged += (_, _) => FitToWorkingArea();
         ScalingChanged += (_, _) => FitToWorkingArea();
         LayoutUpdated += (_, _) => UpdateMinHeight();
     }
 
-    internal event EventHandler<ThemePreference>? ThemeSelected;
-
     // Only set once a tray icon exists: without one, a hidden window could not be reopened.
     internal bool MinimizeToTray { get; set; }
 
-    internal void ShowTheme(ThemePreference theme)
-    {
-        foreach (var (item, value) in _themeItems)
-        {
-            item.IsChecked = value == theme;
-        }
-    }
+    // The settings dialog's data; app preferences live outside MainViewModel.
+    internal SettingsViewModel? Settings { get; set; }
 
     internal void RestoreFromTray()
     {
@@ -71,15 +56,6 @@ public partial class MainWindow : Window
             {
                 Hide();
             }
-        }
-    }
-
-    private void OnThemeClick(object? sender, RoutedEventArgs e)
-    {
-        if (sender is MenuItem item && _themeItems.TryGetValue(item, out var theme))
-        {
-            ShowTheme(theme);
-            ThemeSelected?.Invoke(this, theme);
         }
     }
 
@@ -146,21 +122,27 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnFirmwarePageClick(object? sender, RoutedEventArgs e)
+    private async void OnSettingsClick(object? sender, RoutedEventArgs e)
     {
-        if (_viewModel?.Firmware.InfoUrl is not { } url)
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+
+        if (Settings is null)
         {
             return;
         }
 
+        _settingsWindow = new SettingsWindow { DataContext = Settings };
         try
         {
-            await Launcher.LaunchUriAsync(url);
+            await _settingsWindow.ShowDialog(this);
         }
-        catch (Exception ex) when (ex is ExternalException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        finally
         {
-            // An escaping exception in an async void handler would crash the app. The user sees that no browser
-            // opened, and the menu item is still there to try again.
+            _settingsWindow = null;
         }
     }
 

@@ -70,6 +70,29 @@ public sealed class UiSettingsStoreTests : IDisposable
     }
 
     [Test]
+    public async Task WhenAutoConnectIsTurnedOffThenItIsLoadedBack()
+    {
+        var store = CreateStore();
+        store.Save(new UiSettings(AutoConnect: false));
+
+        var settings = CreateStore().Load();
+
+        await Assert.That(settings.AutoConnect).IsFalse();
+    }
+
+    [Test]
+    public async Task WhenFileHasNoAutoConnectThenItIsOn()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+        await File.WriteAllTextAsync(SettingsPath, """{ "Theme": "Dark" }""");
+        var store = CreateStore();
+
+        var settings = store.Load();
+
+        await Assert.That(settings.AutoConnect).IsTrue();
+    }
+
+    [Test]
     public async Task WhenFileIsCorruptThenDefaultsAreLoaded()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);

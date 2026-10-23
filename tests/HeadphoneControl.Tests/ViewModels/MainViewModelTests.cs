@@ -1,3 +1,4 @@
+using HeadphoneControl.Core;
 using HeadphoneControl.Diagnostics;
 using HeadphoneControl.FirmwareUpdates;
 using HeadphoneControl.Settings;
@@ -7,6 +8,7 @@ using HeadphoneControl.Resources;
 using HeadphoneControl.ViewModels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -52,7 +54,9 @@ public class MainViewModelTests
     private static MainViewModel CreateViewModel(
         IHeadphoneDevice device,
         Action<Action>? dispatch = null,
-        ILogger<MainViewModel>? logger = null)
+        ILogger<MainViewModel>? logger = null,
+        IHeadsetPresenceMonitor? presence = null,
+        TimeProvider? time = null)
     {
         var inline = dispatch ?? (action => action());
         return new MainViewModel(
@@ -65,8 +69,68 @@ public class MainViewModelTests
                 _ => { },
                 NullLogger<FirmwareUpdateViewModel>.Instance,
                 inline),
+            new AutoConnectViewModel(
+                presence ?? Substitute.For<IHeadsetPresenceMonitor>(),
+                isEnabled: true,
+                _ => { },
+                NullLogger<AutoConnectViewModel>.Instance,
+                inline,
+                time),
             logger ?? NullLogger<MainViewModel>.Instance,
             inline);
+    }
+
+    private static void ReportHeadsetJoined(IHeadsetPresenceMonitor presence) =>
+        presence.HeadsetConnected += Raise.Event<EventHandler<DiscoveredHeadset>>(
+            presence, new DiscoveredHeadset("WH-CH720N", "bluetooth-id", ProtocolGeneration.V2));
+
+    [Test]
+    public async Task WhenHeadsetJoinsThePcWhileDisconnectedThenItIsConnected()
+    {
+        var time = new FakeTimeProvider();
+        var presence = Substitute.For<IHeadsetPresenceMonitor>();
+        var device = CreateDevice(DeviceState.Disconnected);
+        var connectStarted = new TaskCompletionSource();
+        device.ConnectAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            connectStarted.TrySetResult();
+            return Task.CompletedTask;
+        });
+        using var viewModel = CreateViewModel(device, presence: presence, time: time);
+
+        ReportHeadsetJoined(presence);
+        time.Advance(AutoConnectViewModel.SettleDelay);
+        await connectStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await device.Received(1).ConnectAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task WhenAConnectFailedThenTheHeadsetJoiningAgainSoonStartsNoConnect()
+    {
+        var time = new FakeTimeProvider();
+        var presence = Substitute.For<IHeadsetPresenceMonitor>();
+        var device = CreateDevice(DeviceState.Disconnected with { Connection = ConnectionStatus.Failed });
+        using var viewModel = CreateViewModel(device, presence: presence, time: time);
+
+        ReportHeadsetJoined(presence);
+        time.Advance(AutoConnectViewModel.SettleDelay);
+
+        await device.DidNotReceive().ConnectAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task WhenHeadsetJoinsThePcWhileConnectedThenNoConnectStarts()
+    {
+        var time = new FakeTimeProvider();
+        var presence = Substitute.For<IHeadsetPresenceMonitor>();
+        var device = CreateDevice(ConnectedState());
+        using var viewModel = CreateViewModel(device, presence: presence, time: time);
+
+        ReportHeadsetJoined(presence);
+        time.Advance(AutoConnectViewModel.SettleDelay);
+
+        await device.DidNotReceive().ConnectAsync(Arg.Any<CancellationToken>());
     }
 
     [Test]
